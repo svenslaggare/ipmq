@@ -8,8 +8,6 @@ import numpy as np
 import libipmq
 
 def producer():
-    producer = libipmq.Producer("test.queue", "/dev/shm/test.data", 3 * (1280 * 720 * 3 + 12))
-
     capture = cv2.VideoCapture(0, cv2.CAP_V4L2)
     capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M', 'J', 'P', 'G'))
     capture.set(cv2.CAP_PROP_FPS, 30.0)
@@ -19,6 +17,8 @@ def producer():
     _, frame = capture.read()
     frame_data_size = np.product(list(frame.shape))
     frame_size = 12 + frame_data_size
+
+    producer = libipmq.Producer("test.queue", "/dev/shm/test.data", 3 * frame_size)
 
     last_measurement = time.time()
     count = 0
