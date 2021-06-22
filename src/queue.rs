@@ -142,7 +142,7 @@ impl<T> Queue<T> {
 
     /// Removes messages that have expired
     pub fn remove_expired(&mut self, max_alive: f64) -> bool {
-        let mut removed = false;
+        let mut any_removed = false;
         let now = std::time::Instant::now();
         let get_duration = |queue_data: &HashMap<MessageId, QueueEntry<T>>, message_id: MessageId| {
             (now - queue_data.get(&message_id).unwrap().created).as_micros() as f64 / 1.06E6
@@ -154,7 +154,7 @@ impl<T> Queue<T> {
             if get_duration(&self.queue_data, *message_id) >= max_alive {
                 self.queue_data.remove(message_id);
                 println!("Removed (TTL): {}", message_id);
-                removed = true;
+                any_removed = true;
                 false
             } else {
                 true
@@ -180,7 +180,7 @@ impl<T> Queue<T> {
             }
         }
 
-        removed
+        any_removed
     }
 
     /// Adds the given client to the queue such that it can receive messages from the queue

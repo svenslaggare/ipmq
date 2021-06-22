@@ -246,10 +246,4 @@ impl Producer {
             }
         }
     }
-
-    pub async fn handle_timed_events(&self) {
-        for queue in self.exchange.lock().await.queues.values() {
-            queue.remove_oldest().await;
-        }
-    }
 }
