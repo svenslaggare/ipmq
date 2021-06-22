@@ -54,7 +54,7 @@ impl Producer {
                     self.start_handle_client(stream).await;
                 }
                 Err(e) => {
-                    println!("{:?}", e);
+                    println!("Failed accepting client: {:?}", e);
                 }
             }
         }

@@ -43,7 +43,7 @@ impl Consumer {
     }
 
     /// Handles messages from the queue.
-    /// Callback called on each valid message. Return value is a command to send in response to the server (typically ack).
+    /// Callback invoked on each message, return value is a command to send in response to the server (typically ack).
     pub async fn handle_messages<F: FnMut(&mut SharedMemory, Message) -> Option<Command>>(&mut self, mut on_message: F) {
         loop {
             match Command::receive_command(&mut self.stream).await {
