@@ -3,10 +3,25 @@ use std::collections::{VecDeque, BTreeSet, BTreeMap, HashMap};
 pub type ClientId = u64;
 pub type MessageId = u64;
 
+/// Represents a queue entry
+pub struct QueueEntry<T> {
+    pub value: T,
+    pub created: std::time::Instant
+}
+
+impl<T> QueueEntry<T> {
+    pub fn new(value: T) -> QueueEntry<T> {
+        QueueEntry {
+            value,
+            created: std::time::Instant::now()
+        }
+    }
+}
+
 /// Represents a queue
 pub struct Queue<T> {
     next_message_id: MessageId,
-    queue_data: HashMap<MessageId, T>,
+    queue_data: HashMap<MessageId, QueueEntry<T>>,
     queue: VecDeque<MessageId>,
     unacknowledged: BTreeMap<ClientId, BTreeSet<MessageId>>,
     last_pop_client_id: Option<ClientId>
@@ -35,7 +50,7 @@ impl<T> Queue<T> {
     pub fn push(&mut self, message: T) -> MessageId {
         let message_id = self.next_message_id;
         self.next_message_id += 1;
-        self.queue_data.insert(message_id, message);
+        self.queue_data.insert(message_id, QueueEntry::new(message));
         self.queue.push_back(message_id);
         message_id
     }
@@ -46,7 +61,7 @@ impl<T> Queue<T> {
         self.unacknowledged.entry(client_id).or_insert_with(|| BTreeSet::new()).insert(message_id);
         let data = &self.queue_data[&message_id];
         self.last_pop_client_id = Some(client_id);
-        Some((message_id, data))
+        Some((message_id, &data.value))
     }
 
     /// Acknowledges the given message, removing it completely from the queue
@@ -66,6 +81,7 @@ impl<T> Queue<T> {
     /// Removes the oldest message from the queue (including unacknowledged)
     pub fn remove_oldest(&mut self) -> bool {
         let remove_unacknowledged = |self_ref: &mut Self, message_id| {
+            println!("Removed: {} (full)", message_id);
             for unacknowledged in self_ref.unacknowledged.values_mut() {
                 unacknowledged.remove(&message_id);
             }
@@ -74,6 +90,7 @@ impl<T> Queue<T> {
         };
 
         let remove_queued = |self_ref: &mut Self, message_id| {
+            println!("Removed: {} (full)", message_id);
             self_ref.queue.remove(0);
             self_ref.queue_data.remove(&message_id);
         };
@@ -123,6 +140,49 @@ impl<T> Queue<T> {
         self.queue.front().cloned()
     }
 
+    /// Removes messages that have expired
+    pub fn remove_expired(&mut self, max_alive: f64) -> bool {
+        let mut removed = false;
+        let now = std::time::Instant::now();
+        let get_duration = |queue_data: &HashMap<MessageId, QueueEntry<T>>, message_id: MessageId| {
+            (now - queue_data.get(&message_id).unwrap().created).as_micros() as f64 / 1.06E6
+        };
+
+        // Remove queued
+        let mut tmp_queue = std::mem::take(&mut self.queue);
+        tmp_queue.retain(|message_id| {
+            if get_duration(&self.queue_data, *message_id) >= max_alive {
+                self.queue_data.remove(message_id);
+                println!("Removed (TTL): {}", message_id);
+                removed = true;
+                false
+            } else {
+                true
+            }
+        });
+        std::mem::swap(&mut self.queue, &mut tmp_queue);
+
+        // Removed unacknowledged
+        let mut to_remove = Vec::new();
+        for unacknowledged in self.unacknowledged.values() {
+            for message_id in unacknowledged {
+                if get_duration(&self.queue_data, *message_id) >= max_alive {
+                    println!("Removed (TTL): {}", message_id);
+                    self.queue_data.remove(message_id);
+                    to_remove.push(*message_id);
+                }
+            }
+        }
+
+        for unacknowledged in self.unacknowledged.values_mut() {
+            for message_id in &to_remove {
+                unacknowledged.remove(message_id);
+            }
+        }
+
+        removed
+    }
+
     /// Adds the given client to the queue such that it can receive messages from the queue
     pub fn add_client(&mut self, client_id: ClientId) {
         self.unacknowledged.entry(client_id).or_insert_with(|| BTreeSet::new());
@@ -143,8 +203,8 @@ impl<T> Queue<T> {
 
     /// Finds the client to receive the next message
     pub fn find_client_to_receive_message(&mut self) -> Option<ClientId> {
-        self.find_client_least_unacknowledged()
-        // self.find_client_no_unacknowledged()
+        // self.find_client_least_unacknowledged()
+        self.find_client_no_unacknowledged()
     }
 
     fn find_client_least_unacknowledged(&mut self) -> Option<ClientId> {

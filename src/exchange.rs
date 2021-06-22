@@ -94,7 +94,8 @@ impl Exchange {
 
 /// The options for a queue
 pub struct ExchangeQueueOptions {
-    pub auto_delete: bool
+    pub auto_delete: bool,
+    pub ttl: Option<f64>
 }
 
 /// Represents a message in the queue
@@ -161,6 +162,20 @@ impl ExchangeQueue {
     /// Tries to remove the oldest message from the queue
     pub async fn remove_oldest(&self) -> bool {
         self.queue.lock().await.remove_oldest()
+    }
+
+    /// Tries to remove expired messages from the queue
+    pub async fn remove_expired(&self) -> bool {
+        if let Some(ttl) = self.options.ttl {
+            if self.queue.lock().await.remove_expired(ttl) {
+                self.notify.notify_one();
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 
     /// Adds the client with the given id to the queue such that it can receive messages from the queue

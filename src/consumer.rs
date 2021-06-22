@@ -25,8 +25,8 @@ impl Consumer {
     }
 
     /// Sends a command to create a new queue in the message queue
-    pub async fn create_queue(&mut self, name: &str, auto_delete: bool) -> tokio::io::Result<()> {
-        Command::CreateQueue(name.to_owned(), auto_delete).send_command(&mut self.stream).await?;
+    pub async fn create_queue(&mut self, name: &str, auto_delete: bool, ttl: Option<f64>) -> tokio::io::Result<()> {
+        Command::CreateQueue { name: name.to_owned(), auto_delete, ttl } .send_command(&mut self.stream).await?;
         Ok(())
     }
 

@@ -8,7 +8,7 @@ use crate::exchange::{QueueId};
 /// Represents a command used for communication between the producer and consumer
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Command {
-    CreateQueue(String, bool),
+    CreateQueue { name: String, auto_delete: bool, ttl: Option<f64> },
     BindQueue(String, String),
     StartConsume(String),
     SharedMemoryArea(String, usize),

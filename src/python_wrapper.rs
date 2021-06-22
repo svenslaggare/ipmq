@@ -101,8 +101,8 @@ impl ConsumerWrapper {
         )
     }
 
-    fn create_queue(&mut self, name: &str, auto_delete: bool) -> PyResult<()> {
-        self.tokio_runtime.block_on(self.consumer.create_queue(name, auto_delete))
+    fn create_queue(&mut self, name: &str, auto_delete: bool, ttl: Option<f64>) -> PyResult<()> {
+        self.tokio_runtime.block_on(self.consumer.create_queue(name, auto_delete, ttl))
             .map_err(|err| PyValueError::new_err(err))?;
         Ok(())
     }

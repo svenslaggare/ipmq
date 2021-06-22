@@ -104,7 +104,7 @@ async fn main_consumer(queue: Option<String>) {
     println!("consumer: {}", queue);
 
     let mut consumer = Consumer::connect(Path::new("test.queue")).await.unwrap();
-    consumer.create_queue(&queue, true).await.unwrap();
+    consumer.create_queue(&queue, true, None).await.unwrap();
     consumer.bind_queue(&queue, ".*").await.unwrap();
     consumer.start_consume_queue(&queue).await.unwrap();
 

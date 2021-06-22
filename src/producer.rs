@@ -8,6 +8,8 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::net::unix::{OwnedWriteHalf, OwnedReadHalf};
 use tokio::sync::{Mutex, mpsc};
 use tokio::net::{UnixStream, UnixListener};
+use tokio::time;
+use tokio::time::Duration;
 
 use crate::queue::{Queue, ClientId};
 use crate::command::{Command, Message};
@@ -70,10 +72,20 @@ impl Producer {
             tokio::spawn(async move {
                 while queue_clone.is_running() {
                     queue_clone.notified().await;
+                    queue_clone.remove_expired().await;
                     self_clone.try_consume_queue(
                         queue_clone.id,
                         queue_clone.queue.lock().await.deref_mut()
                     ).await;
+                }
+            });
+
+            let queue_clone = queue.clone();
+            tokio::spawn(async move {
+                let mut interval = time::interval(Duration::from_millis(200));
+                while queue_clone.is_running() {
+                    interval.tick().await;
+                    queue_clone.remove_expired().await;
                 }
             });
         }
@@ -176,8 +188,8 @@ impl Producer {
             match Command::receive_command(&mut reader).await {
                 Ok(command) => {
                     match command {
-                        Command::CreateQueue(queue_name, auto_delete) => {
-                            self.create_queue(&queue_name, ExchangeQueueOptions { auto_delete }).await;
+                        Command::CreateQueue { name, auto_delete, ttl } => {
+                            self.create_queue(&name, ExchangeQueueOptions { auto_delete, ttl }).await;
                         }
                         Command::BindQueue(queue_name, pattern) => {
                             if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
@@ -232,6 +244,12 @@ impl Producer {
             } else {
                 break;
             }
+        }
+    }
+
+    pub async fn handle_timed_events(&self) {
+        for queue in self.exchange.lock().await.queues.values() {
+            queue.remove_oldest().await;
         }
     }
 }
