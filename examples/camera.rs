@@ -42,9 +42,9 @@ async fn main_producer() {
     }
 
     video_capture.set(opencv::videoio::CAP_PROP_FOURCC, opencv::videoio::VideoWriter::fourcc('M' as i8, 'J' as i8, 'P' as i8, 'G' as i8).unwrap() as f64).unwrap();
-    video_capture.set(opencv::videoio::CAP_PROP_FPS, 30.0).unwrap();
     video_capture.set(opencv::videoio::CAP_PROP_FRAME_WIDTH, 1280.0).unwrap();
     video_capture.set(opencv::videoio::CAP_PROP_FRAME_HEIGHT, 720.0).unwrap();
+    video_capture.set(opencv::videoio::CAP_PROP_FPS, 30.0).unwrap();
 
     let mut ref_frame = Mat::default();
     video_capture.read(&mut ref_frame).unwrap();
@@ -56,7 +56,7 @@ async fn main_producer() {
     let frame_size = frame_data_size + metadata_size;
     let shared_memory = SharedMemory::write(Path::new("/dev/shm/test.data"), frame_size * 3).unwrap();
 
-    let producer = Arc::new(Producer::new((shared_memory.path(), shared_memory.size())));
+    let producer = Producer::new(shared_memory.path(), shared_memory.size());
 
     let producer_clone = producer.clone();
     tokio::spawn(async move {

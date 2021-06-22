@@ -11,13 +11,14 @@ use tokio::net::{UnixStream, UnixListener};
 
 use crate::queue::{Queue, ClientId};
 use crate::command::{Command, Message};
-use crate::exchange::{Exchange, QueueId, ExchangeQueue, ExchangeQueueOptions, QueueMessage};
+use crate::exchange::{Exchange, QueueId, ExchangeQueue, ExchangeQueueOptions, QueueMessage, QueueMessageData};
 use crate::shared_memory::{SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation};
 
 pub struct ProducerClient {
     pub sender: UnboundedSender<Command>,
 }
 
+/// Represents a producer of messages
 pub struct Producer {
     next_client_id: AtomicU64,
     clients: Mutex<HashMap<ClientId, ProducerClient>>,
@@ -26,15 +27,19 @@ pub struct Producer {
 }
 
 impl Producer {
-    pub fn new(shared_memory_spec: (&Path, usize)) -> Producer {
-        Producer {
-            next_client_id: AtomicU64::new(1),
-            clients: Mutex::new(HashMap::new()),
-            exchange: Mutex::new(Exchange::new()),
-            shared_memory_spec: (shared_memory_spec.0.to_owned(), shared_memory_spec.1)
-        }
+    /// Creates a new producer using the given existing shared memory file
+    pub fn new(shared_memory_file: &Path, shared_memory_size: usize) -> Arc<Producer> {
+        Arc::new(
+            Producer {
+                next_client_id: AtomicU64::new(1),
+                clients: Mutex::new(HashMap::new()),
+                exchange: Mutex::new(Exchange::new()),
+                shared_memory_spec: (shared_memory_file.to_owned(), shared_memory_size)
+            }
+        )
     }
 
+    /// Starts the producer at the given path
     pub async fn start(self: &Arc<Self>, path: &Path) -> tokio::io::Result<()> {
         #[allow(unused_must_use)] {
             std::fs::remove_file(path);
@@ -44,7 +49,7 @@ impl Producer {
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
-                    self.handle_client(stream).await;
+                    self.start_handle_client(stream).await;
                 }
                 Err(e) => {
                     println!("{:?}", e);
@@ -53,6 +58,7 @@ impl Producer {
         }
     }
 
+    /// Creates a new queue
     pub async fn create_queue(self: &Arc<Self>,
                               name: &str,
                               options: ExchangeQueueOptions) -> Arc<ExchangeQueue> {
@@ -75,6 +81,7 @@ impl Producer {
         queue
     }
 
+    /// Tries to allocate memory from the given shared memory area
     pub async fn allocate(&self,
                           shared_memory_allocator: &SmartSharedMemoryAllocator,
                           size: usize) -> Option<Arc<SmartMemoryAllocation>> {
@@ -97,14 +104,18 @@ impl Producer {
         }
     }
 
-    pub async fn publish(&self, routing_key: &str, message: QueueMessage) {
-        let matching_queues = self.exchange.lock().await.matching_queues(routing_key).await;
-        for queue in matching_queues {
-            queue.push(message.clone()).await;
+    /// Publish the given message with the given routing key to the exchange
+    pub async fn publish(&self, routing_key: &str, message: QueueMessageData) {
+        for queue in self.exchange.lock().await.matching_queues(routing_key).await {
+            queue.push(QueueMessage {
+                routing_key: routing_key.to_owned(),
+                data: message.clone()
+            }).await;
         }
     }
 
-    async fn handle_client(self: &Arc<Self>, stream: UnixStream) {
+    /// Starts tasks to handle the given client
+    async fn start_handle_client(self: &Arc<Self>, stream: UnixStream) {
         let client_pid = stream.peer_cred().unwrap().pid().unwrap().to_string();
         let (client_id, client_receiver) = self.create_client().await;
 
@@ -123,12 +134,12 @@ impl Producer {
 
         let self_clone = self.clone();
         tokio::spawn(async move {
-            self_clone.start_send_commands(client_id, client_receiver, writer).await
+            self_clone.handle_send_commands(client_id, client_receiver, writer).await
         });
 
         let self_clone = self.clone();
         tokio::spawn(async move {
-            self_clone.start_receive_commands(client_id, reader).await
+            self_clone.handle_receive_commands(client_id, reader).await
         });
     }
 
@@ -146,10 +157,11 @@ impl Producer {
         (client_id, client_receiver)
     }
 
-    async fn start_send_commands(&self,
-                                 client_id: ClientId,
-                                 mut client_receiver: UnboundedReceiver<Command>,
-                                 mut writer: OwnedWriteHalf) {
+    /// Handles sending commands to the given client
+    async fn handle_send_commands(&self,
+                                  client_id: ClientId,
+                                  mut client_receiver: UnboundedReceiver<Command>,
+                                  mut writer: OwnedWriteHalf) {
         while let Some(command) = client_receiver.recv().await {
             if command.send_command(&mut writer).await.is_err() {
                 self.exchange.lock().await.remove_client(client_id).await;
@@ -158,7 +170,8 @@ impl Producer {
         }
     }
 
-    async fn start_receive_commands(self: &Arc<Self>, client_id: ClientId, mut reader: OwnedReadHalf) {
+    /// Handles receiving commands from the given client
+    async fn handle_receive_commands(self: &Arc<Self>, client_id: ClientId, mut reader: OwnedReadHalf) {
         loop {
             match Command::receive_command(&mut reader).await {
                 Ok(command) => {
@@ -195,15 +208,17 @@ impl Producer {
         }
     }
 
+    /// Tries to consume from the given queue
     async fn try_consume_queue(&self, queue_id: QueueId, queue: &mut Queue<QueueMessage>) {
         while queue.len() > 0 {
             let mut clients = self.clients.lock().await;
 
             if clients.len() > 0 {
-                if let Some(client_id) = queue.find_best_client() {
+                if let Some(client_id) = queue.find_client_to_receive_message() {
                     if let Some(client) = clients.get(&client_id) {
                         let (message_id, message) = queue.pop(client_id).unwrap();
-                        if client.sender.send(Command::Message(Message::new(queue_id, message_id, message.message_data()))).is_err() {
+                        let message = Message::new(queue_id, message.routing_key.clone(), message_id, message.data.message_data());
+                        if client.sender.send(Command::Message(message)).is_err() {
                             clients.remove(&client_id);
                             queue.remove_client(client_id);
                         }

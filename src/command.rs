@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::queue::MessageId;
 use crate::exchange::{QueueId};
 
+/// Represents a command used for communication between the producer and consumer
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Command {
     CreateQueue(String, bool),
@@ -31,6 +32,31 @@ impl Command {
     }
 }
 
+/// Represents a message received from the producer
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Message {
+    pub queue_id: QueueId,
+    pub routing_key: String,
+    pub id: MessageId,
+    pub data: MessageData
+}
+
+impl Message {
+    pub fn new(queue_id: QueueId, routing_key: String, id: MessageId, data: MessageData) -> Message {
+        Message {
+            queue_id,
+            routing_key,
+            id,
+            data
+        }
+    }
+
+    pub fn acknowledgement(&self) -> Command {
+        Command::Acknowledge(self.queue_id, self.id)
+    }
+}
+
+/// Defines where to find the data in the shared memory area
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MessageData {
     pub offset: usize,
@@ -43,26 +69,5 @@ impl MessageData {
             offset,
             size
         }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Message {
-    pub queue_id: QueueId,
-    pub id: MessageId,
-    pub data: MessageData
-}
-
-impl Message {
-    pub fn new(queue_id: QueueId, id: MessageId, data: MessageData) -> Message {
-        Message {
-            queue_id,
-            id,
-            data
-        }
-    }
-
-    pub fn acknowledgement(&self) -> Command {
-        Command::Acknowledge(self.queue_id, self.id)
     }
 }

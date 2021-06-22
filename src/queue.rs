@@ -3,6 +3,7 @@ use std::collections::{VecDeque, BTreeSet, BTreeMap, HashMap};
 pub type ClientId = u64;
 pub type MessageId = u64;
 
+/// Represents a queue
 pub struct Queue<T> {
     next_message_id: MessageId,
     queue_data: HashMap<MessageId, T>,
@@ -30,6 +31,7 @@ impl<T> Queue<T> {
         self.unacknowledged.len()
     }
 
+    /// Adds a new message to the end of the queue
     pub fn push(&mut self, message: T) -> MessageId {
         let message_id = self.next_message_id;
         self.next_message_id += 1;
@@ -38,6 +40,7 @@ impl<T> Queue<T> {
         message_id
     }
 
+    /// Pops from the start of the queue
     pub fn pop(&mut self, client_id: ClientId) -> Option<(MessageId, &T)> {
         let message_id = self.queue.pop_front()?;
         self.unacknowledged.entry(client_id).or_insert_with(|| BTreeSet::new()).insert(message_id);
@@ -46,6 +49,7 @@ impl<T> Queue<T> {
         Some((message_id, data))
     }
 
+    /// Acknowledges the given message, removing it completely from the queue
     pub fn acknowledge(&mut self, client_id: ClientId, message_id: MessageId) -> bool {
         if let Some(unacknowledged) = self.unacknowledged.get_mut(&client_id) {
             if unacknowledged.remove(&message_id) {
@@ -59,6 +63,7 @@ impl<T> Queue<T> {
         }
     }
 
+    /// Removes the oldest message from the queue (including unacknowledged)
     pub fn remove_oldest(&mut self) -> bool {
         let remove_unacknowledged = |self_ref: &mut Self, message_id| {
             for unacknowledged in self_ref.unacknowledged.values_mut() {
@@ -118,16 +123,31 @@ impl<T> Queue<T> {
         self.queue.front().cloned()
     }
 
+    /// Adds the given client to the queue such that it can receive messages from the queue
     pub fn add_client(&mut self, client_id: ClientId) {
         self.unacknowledged.entry(client_id).or_insert_with(|| BTreeSet::new());
     }
 
-    pub fn find_best_client(&mut self) -> Option<ClientId> {
-        self.find_best_client_least_unacknowledged()
-        // self.find_best_client_no_unacknowledged()
+    /// Tries to remove the given client from the queue. If removed, unacknowledged messages are put back into the queue.
+    pub fn remove_client(&mut self, client_id: ClientId) -> bool {
+        if let Some(unacknowledged) = self.unacknowledged.remove(&client_id) {
+            for message_id in unacknowledged.into_iter().rev() {
+                self.queue.push_front(message_id);
+            }
+
+            true
+        } else {
+            false
+        }
     }
 
-    fn find_best_client_least_unacknowledged(&mut self) -> Option<ClientId> {
+    /// Finds the client to receive the next message
+    pub fn find_client_to_receive_message(&mut self) -> Option<ClientId> {
+        self.find_client_least_unacknowledged()
+        // self.find_client_no_unacknowledged()
+    }
+
+    fn find_client_least_unacknowledged(&mut self) -> Option<ClientId> {
         let mut best_client_id = None;
         let mut best_num_unacknowledged = 0;
 
@@ -143,7 +163,7 @@ impl<T> Queue<T> {
         best_client_id
     }
 
-    fn find_best_client_no_unacknowledged(&mut self) -> Option<ClientId> {
+    fn find_client_no_unacknowledged(&mut self) -> Option<ClientId> {
         let mut best_client_id = None;
         for (client_id, unacknowledged) in &self.unacknowledged {
             if unacknowledged.is_empty() {
@@ -154,18 +174,6 @@ impl<T> Queue<T> {
         }
 
         best_client_id
-    }
-
-    pub fn remove_client(&mut self, client_id: ClientId) -> bool {
-        if let Some(unacknowledged) = self.unacknowledged.remove(&client_id) {
-            for message_id in unacknowledged.into_iter().rev() {
-                self.queue.push_front(message_id);
-            }
-
-            true
-        } else {
-            false
-        }
     }
 }
 

@@ -7,23 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::command::MessageData;
 
-pub trait GenericMemoryAllocation {
-    fn offset(&self) -> usize;
-    fn ptr(&self) -> *mut u8;
-    fn size(&self) -> usize;
-
-    fn message_data(&self) -> MessageData {
-        MessageData {
-            offset: self.offset(),
-            size: self.size()
-        }
-    }
-
-    fn bytes_mut(&self) -> &mut [u8] {
-        unsafe { std::slice::from_raw_parts_mut(self.ptr(), self.size()) }
-    }
-}
-
+/// Represents a memory allocation
 #[derive(Clone)]
 pub struct MemoryAllocation {
     offset: usize,
@@ -62,6 +46,7 @@ unsafe impl Sync for MemoryAllocation {}
 
 pub type SmartSharedMemoryAllocator = Arc<Mutex<SharedMemoryAllocator>>;
 
+/// Represents a memory allocator for shared memory
 pub struct SharedMemoryAllocator {
     shared_memory: SharedMemory,
     current_offset: usize,
@@ -69,6 +54,7 @@ pub struct SharedMemoryAllocator {
 }
 
 impl SharedMemoryAllocator {
+    /// Creates a new allocator using the given memory area
     pub fn new(shared_memory: SharedMemory) -> SharedMemoryAllocator {
         SharedMemoryAllocator {
             shared_memory,
@@ -77,10 +63,12 @@ impl SharedMemoryAllocator {
         }
     }
 
+    /// Creates a new "smart" memory allocator
     pub fn new_smart(shared_memory: SharedMemory) -> SmartSharedMemoryAllocator {
         Arc::new(Mutex::new(SharedMemoryAllocator::new(shared_memory)))
     }
 
+    /// Tries to allocate memory of the given size
     pub fn allocate(&mut self, size: usize) -> Option<MemoryAllocation> {
         for allocation_index in 0..self.free_allocations.len() {
             if size <= self.free_allocations[allocation_index].full_size {
@@ -100,6 +88,7 @@ impl SharedMemoryAllocator {
         Some(MemoryAllocation::new(offset, self.create_ptr(offset), size))
     }
 
+    /// Deallocate the given allocation
     pub fn deallocate(&mut self, allocation: MemoryAllocation) {
         self.free_allocations.push(allocation);
     }
@@ -109,12 +98,14 @@ impl SharedMemoryAllocator {
     }
 }
 
+/// Represents a "smart" memory allocation that removes itself from the allocator when dropped
 pub struct SmartMemoryAllocation {
     allocator: Arc<Mutex<SharedMemoryAllocator>>,
     allocation: Option<MemoryAllocation>
 }
 
 impl SmartMemoryAllocation {
+    /// Tries to allocate using the given allocator
     pub fn new(allocator: &SmartSharedMemoryAllocator, size: usize) -> Option<Arc<SmartMemoryAllocation>> {
         let allocation = allocator.lock().unwrap().allocate(size)?;
         Some(
@@ -161,7 +152,9 @@ pub struct SharedMemory {
     size: usize
 }
 
+/// Represents a shared memory area
 impl SharedMemory {
+    /// Create a new writable shared memory area in /dev/shm
     pub fn write_auto(size: usize) -> Result<SharedMemory, SharedMemoryError>{
         let named_tempfile = tempfile::Builder::new()
             .prefix("")
@@ -176,10 +169,12 @@ impl SharedMemory {
         SharedMemory::write(&path, size)
     }
 
+    /// Creates a new writable shared memory area in the given location
     pub fn write(path: &Path, size: usize) -> Result<SharedMemory, SharedMemoryError> {
         SharedMemory::full(path, size, true)
     }
 
+    /// Readable shared memory area from the given location
     pub fn read(path: &Path, size: usize) -> Result<SharedMemory, SharedMemoryError> {
         SharedMemory::full(path, size, false)
     }
@@ -276,6 +271,27 @@ impl Drop for SharedMemory {
         unsafe {
             libc::munmap(self.address, self.size);
         }
+    }
+}
+
+pub trait GenericMemoryAllocation {
+    fn offset(&self) -> usize;
+    fn ptr(&self) -> *mut u8;
+    fn size(&self) -> usize;
+
+    fn message_data(&self) -> MessageData {
+        MessageData {
+            offset: self.offset(),
+            size: self.size()
+        }
+    }
+
+    fn bytes(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.ptr(), self.size()) }
+    }
+
+    fn bytes_mut(&self) -> &mut [u8] {
+        unsafe { std::slice::from_raw_parts_mut(self.ptr(), self.size()) }
     }
 }
 
