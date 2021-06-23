@@ -60,6 +60,13 @@ impl ProducerWrapper {
             producer_clone.publish(&routing_key, message.allocation).await;
         });
     }
+
+    fn publish_bytes(&mut self, routing_key: String, message: &[u8]) -> PyResult<()> {
+        let mut allocation = self.allocate(message.len())?;
+        allocation.copy_from(0, message);
+        self.publish(routing_key, allocation);
+        Ok(())
+    }
 }
 
 #[pyclass(name="MemoryAllocation")]
