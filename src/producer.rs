@@ -22,6 +22,7 @@ pub struct ProducerClient {
 
 /// Represents a producer of messages
 pub struct Producer {
+    path: PathBuf,
     next_client_id: AtomicU64,
     clients: Mutex<HashMap<ClientId, ProducerClient>>,
     exchange: Mutex<Exchange>,
@@ -29,10 +30,11 @@ pub struct Producer {
 }
 
 impl Producer {
-    /// Creates a new producer using the given existing shared memory file
-    pub fn new(shared_memory_file: &Path, shared_memory_size: usize) -> Arc<Producer> {
+    /// Creates a new producer at the given path using the given existing shared memory file
+    pub fn new(path: &Path, shared_memory_file: &Path, shared_memory_size: usize) -> Arc<Producer> {
         Arc::new(
             Producer {
+                path: path.to_owned(),
                 next_client_id: AtomicU64::new(1),
                 clients: Mutex::new(HashMap::new()),
                 exchange: Mutex::new(Exchange::new()),
@@ -41,13 +43,13 @@ impl Producer {
         )
     }
 
-    /// Starts the producer at the given path
-    pub async fn start(self: &Arc<Self>, path: &Path) -> tokio::io::Result<()> {
+    /// Starts the producer
+    pub async fn start(self: &Arc<Self>) -> tokio::io::Result<()> {
         #[allow(unused_must_use)] {
-            std::fs::remove_file(path);
+            std::fs::remove_file(&self.path);
         }
 
-        let listener = UnixListener::bind(path)?;
+        let listener = UnixListener::bind(&self.path)?;
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {

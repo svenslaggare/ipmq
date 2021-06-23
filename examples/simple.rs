@@ -29,7 +29,7 @@ async fn main_producer() {
 
     let shared_memory = SharedMemory::write(Path::new("/dev/shm/test.data"), 2048).unwrap();
 
-    let producer = Producer::new(shared_memory.path(), shared_memory.size());
+    let producer = Producer::new(Path::new("test.queue"), shared_memory.path(), shared_memory.size());
 
     let producer_clone = producer.clone();
     tokio::spawn(async move {
@@ -53,7 +53,7 @@ async fn main_producer() {
         }
     });
 
-    producer.start(Path::new("test.queue")).await.unwrap();
+    producer.start().await.unwrap();
 }
 
 async fn main_consumer(queue: Option<String>) {

@@ -24,14 +24,13 @@ impl ProducerWrapper {
         let tokio_runtime = Arc::new(Runtime::new().unwrap());
 
         let shared_memory = SharedMemory::write(Path::new(shared_memory_path), shared_memory_size).unwrap();
-        let producer = Producer::new(shared_memory.path(), shared_memory.size());
+        let producer = Producer::new(Path::new(path), shared_memory.path(), shared_memory.size());
         let shared_memory_allocator = SharedMemoryAllocator::new_smart(shared_memory);
 
-        let path = Path::new(path).to_path_buf();
         let tokio_runtime_clone = tokio_runtime.clone();
         let producer_clone = producer.clone();
         std::thread::spawn(move || {
-            tokio_runtime_clone.block_on(producer_clone.start(&path)).unwrap();
+            tokio_runtime_clone.block_on(producer_clone.start()).unwrap();
         });
 
         Ok(
