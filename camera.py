@@ -24,8 +24,8 @@ def producer():
     count = 0
 
     while True:
-        allocation = producer.allocate(frame_size)
         _, frame = capture.read()
+        allocation = producer.allocate(frame_size)
 
         allocation.copy_from(0, struct.pack("iii", frame.shape[1], frame.shape[0], 16))
         allocation.copy_from(12, frame.tobytes())

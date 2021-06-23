@@ -108,7 +108,7 @@ async fn main_consumer(queue: Option<String>) {
     consumer.bind_queue(&queue, ".*").await.unwrap();
     consumer.start_consume_queue(&queue).await.unwrap();
 
-    consumer.handle_messages(|shared_memory, message| {
+    consumer.handle_messages::<_, ()>(|shared_memory, message| {
         let metadata_size = std::mem::size_of::<CameraMetadata>();
         let buffer = shared_memory.bytes_mut_from_data(&message.data);
         let frame_metadata = unsafe { std::ptr::read(buffer[..metadata_size].as_ptr() as *const CameraMetadata) };
@@ -125,6 +125,6 @@ async fn main_consumer(queue: Option<String>) {
         opencv::highgui::imshow(format!("Queue: {}", queue).as_str(), &frame).unwrap();
         opencv::highgui::wait_key(1).unwrap();
 
-        Some(message.acknowledgement())
-    }).await;
+        Ok(Some(message.acknowledgement()))
+    }).await.unwrap();
 }

@@ -44,7 +44,7 @@ impl Consumer {
 
     /// Handles messages from the queue.
     /// Callback invoked on each message, return value is a command to send in response to the server (typically ack).
-    pub async fn handle_messages<F: FnMut(&mut SharedMemory, Message) -> Option<Command>>(&mut self, mut on_message: F) {
+    pub async fn handle_messages<F: FnMut(&mut SharedMemory, Message) -> Result<Option<Command>, E>, E>(&mut self, mut on_message: F) -> Result<(), E> {
         loop {
             match Command::receive_command(&mut self.stream).await {
                 Ok(command) => {
@@ -61,7 +61,7 @@ impl Consumer {
                         }
                         Command::Message(message) => {
                             if let Some(shared_memory) = self.shared_memory.as_mut() {
-                                if let Some(new_command) = on_message(shared_memory, message) {
+                                if let Some(new_command) = on_message(shared_memory, message)? {
                                     new_command.send_command(&mut self.stream).await.unwrap();
                                 }
                             } else {
@@ -79,5 +79,7 @@ impl Consumer {
                 }
             }
         }
+
+        return Ok(());
     }
 }

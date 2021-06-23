@@ -25,6 +25,10 @@ impl MemoryAllocation {
             full_size: size
         }
     }
+
+    pub fn is_next_to(&self, other: &MemoryAllocation) -> bool {
+        (self.offset + self.full_size) == other.offset
+    }
 }
 
 impl GenericMemoryAllocation for MemoryAllocation {
@@ -70,6 +74,27 @@ impl SharedMemoryAllocator {
 
     /// Tries to allocate memory of the given size
     pub fn allocate(&mut self, size: usize) -> Option<MemoryAllocation> {
+        if let Some(allocation) = self.allocate_from_free_store(size) {
+            return Some(allocation);
+        }
+
+        // Try allocate new
+        let offset = self.current_offset;
+        if offset + size > self.shared_memory.size() {
+            self.merge_free_allocations();
+
+            if let Some(allocation) = self.allocate_from_free_store(size) {
+                return Some(allocation);
+            }
+
+            return None;
+        }
+
+        self.current_offset += size;
+        Some(MemoryAllocation::new(offset, self.create_ptr(offset), size))
+    }
+
+    fn allocate_from_free_store(&mut self, size: usize) -> Option<MemoryAllocation> {
         for allocation_index in 0..self.free_allocations.len() {
             if size <= self.free_allocations[allocation_index].full_size {
                 let mut allocation = self.free_allocations.remove(allocation_index);
@@ -78,14 +103,24 @@ impl SharedMemoryAllocator {
             }
         }
 
-        // Try allocate new
-        let offset = self.current_offset;
-        if offset >= self.shared_memory.size {
-            return None;
-        }
+        return None
+    }
 
-        self.current_offset += size;
-        Some(MemoryAllocation::new(offset, self.create_ptr(offset), size))
+    fn merge_free_allocations(&mut self) {
+        self.free_allocations.sort_by_key(|allocation| allocation.offset);
+        let mut index1 = 0;
+        while index1 < self.free_allocations.len() {
+            let mut index2 = index1 + 1;
+            while index2 < self.free_allocations.len() {
+                if self.free_allocations[index1].is_next_to(&self.free_allocations[index2]) {
+                    self.free_allocations[index1].full_size += self.free_allocations.remove(index2).full_size;
+                } else {
+                    index2 += 1;
+                }
+            }
+
+            index1 += 1;
+        }
     }
 
     /// Deallocate the given allocation

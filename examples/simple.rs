@@ -65,15 +65,15 @@ async fn main_consumer(queue: Option<String>) {
     consumer.bind_queue(&queue, ".*").await.unwrap();
     consumer.start_consume_queue(&queue).await.unwrap();
 
-    consumer.handle_messages(|shared_memory, message| {
+    consumer.handle_messages::<_, ()>(|shared_memory, message| {
         let buffer = shared_memory.bytes_from_data(&message.data);
         let data_str = std::str::from_utf8(buffer).unwrap();
         println!("{}: {}", message.id, data_str);
-        Some(message.acknowledgement())
+        Ok(Some(message.acknowledgement()))
         // if message.id % 10 == 0 {
         //     None
         // } else {
         //     Some(message.acknowledgement())
         // }
-    }).await;
+    }).await.unwrap();
 }

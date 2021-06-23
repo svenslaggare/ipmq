@@ -56,7 +56,7 @@ impl ProducerWrapper {
 
     fn publish(&self, routing_key: String, message: MemoryAllocationWrapper) {
         let producer_clone = self.producer.clone();
-        self.tokio_runtime.spawn(async move {
+        self.tokio_runtime.block_on(async move {
             producer_clone.publish(&routing_key, message.allocation).await;
         });
     }
@@ -118,19 +118,17 @@ impl ConsumerWrapper {
             .map_err(|err| PyValueError::new_err(err))?;
 
         self.tokio_runtime.block_on(
-            self.consumer.handle_messages(|shared_memory, message| {
+            self.consumer.handle_messages::<_, PyErr>(|shared_memory, message| {
                 let buffer = shared_memory.bytes_from_data(&message.data);
 
                 callback.call1(
                     py,
                     (message.queue_id, &message.routing_key, message.id, buffer)
-                ).unwrap();
+                )?;
 
-                Some(message.acknowledgement())
+                Ok(Some(message.acknowledgement()))
             })
-        );
-
-        Ok(())
+        )
     }
 }
 
