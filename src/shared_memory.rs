@@ -82,12 +82,7 @@ impl SharedMemoryAllocator {
         let offset = self.current_offset;
         if offset + size > self.shared_memory.size() {
             self.merge_free_allocations();
-
-            if let Some(allocation) = self.allocate_from_free_store(size) {
-                return Some(allocation);
-            }
-
-            return None;
+            return self.allocate_from_free_store(size);
         }
 
         self.current_offset += size;
