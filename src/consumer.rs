@@ -73,8 +73,7 @@ impl Consumer {
                         }
                     }
                 }
-                Err(err) => {
-                    println!("Error: {:?}", err);
+                Err(_) => {
                     break;
                 }
             }

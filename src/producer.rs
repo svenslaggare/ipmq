@@ -213,8 +213,7 @@ impl Producer {
                         _ => {}
                     }
                 }
-                Err(err) => {
-                    println!("Error for #{}: {:?}", client_id, err);
+                Err(_) => {
                     self.exchange.lock().await.remove_client(client_id).await;
                     break;
                 }

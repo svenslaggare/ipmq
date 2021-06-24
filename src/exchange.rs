@@ -191,7 +191,6 @@ impl ExchangeQueue {
             self.notify.notify_one();
         }
 
-        println!("{} - clients: {}", self.name, queue.num_clients());
         self.options.auto_delete && queue.num_clients() == 0
     }
 

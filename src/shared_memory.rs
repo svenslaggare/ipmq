@@ -74,34 +74,32 @@ impl SharedMemoryAllocator {
 
     /// Tries to allocate memory of the given size
     pub fn allocate(&mut self, size: usize) -> Option<MemoryAllocation> {
+        // Allocate using existing
         if let Some(allocation) = self.allocate_from_free_store(size) {
             return Some(allocation);
         }
 
-        // Try allocate new
         let offset = self.current_offset;
         if offset + size > self.shared_memory.size() {
-            self.merge_free_allocations();
-            return self.allocate_from_free_store(size);
+            return self.merge_and_allocate_from_free_store(size);
         }
 
+        // New allocation
         self.current_offset += size;
         Some(MemoryAllocation::new(offset, self.create_ptr(offset), size))
     }
 
     fn allocate_from_free_store(&mut self, size: usize) -> Option<MemoryAllocation> {
         for allocation_index in 0..self.free_allocations.len() {
-            if size <= self.free_allocations[allocation_index].full_size {
-                let mut allocation = self.free_allocations.remove(allocation_index);
-                allocation.size = size;
-                return Some(allocation);
+            if let Some(allocation) = self.try_allocate_from_existing(allocation_index, size) {
+                return Some(allocation)
             }
         }
 
         return None
     }
 
-    fn merge_free_allocations(&mut self) {
+    fn merge_and_allocate_from_free_store(&mut self, size: usize) -> Option<MemoryAllocation>  {
         self.free_allocations.sort_by_key(|allocation| allocation.offset);
         let mut index1 = 0;
         while index1 < self.free_allocations.len() {
@@ -112,9 +110,25 @@ impl SharedMemoryAllocator {
                 } else {
                     index2 += 1;
                 }
+
+                if let Some(allocation) = self.try_allocate_from_existing(index1, size) {
+                    return Some(allocation);
+                }
             }
 
             index1 += 1;
+        }
+
+        None
+    }
+
+    fn try_allocate_from_existing(&mut self, allocation_index: usize, size: usize) -> Option<MemoryAllocation> {
+        if size <= self.free_allocations[allocation_index].full_size {
+            let mut allocation = self.free_allocations.remove(allocation_index);
+            allocation.size = size;
+            Some(allocation)
+        } else {
+            None
         }
     }
 

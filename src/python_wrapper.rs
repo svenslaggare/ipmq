@@ -139,7 +139,7 @@ impl ConsumerWrapper {
 }
 
 #[pymodule]
-fn libipmq(py: Python, m: &PyModule) -> PyResult<()> {
+fn libipmq(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<ProducerWrapper>()?;
     m.add_class::<MemoryAllocationWrapper>()?;
     m.add_class::<ConsumerWrapper>()?;
