@@ -1,9 +1,9 @@
 use std::os::raw::c_char;
 use std::path::Path;
 use std::sync::Arc;
+use std::ffi::{CStr, CString};
 
 use tokio::runtime::Runtime;
-use std::ffi::{CStr, CString};
 
 use crate::consumer::Consumer as ConsumerImpl;
 use crate::producer::Producer as ProducerImpl;
