@@ -1,10 +1,14 @@
 use std::path::Path;
 use std::sync::Arc;
+use std::ffi::{c_void, CString};
 
 use tokio::runtime::Runtime;
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
+use pyo3::{PyBufferProtocol};
+use pyo3::ffi::{Py_buffer, Py_INCREF};
+use pyo3::AsPyPointer;
 
 use crate::consumer::Consumer;
 use crate::producer::Producer;
@@ -48,9 +52,12 @@ impl ProducerWrapper {
         let allocation = self.tokio_runtime.block_on(self.producer.allocate(&self.shared_memory_allocator, size))
             .ok_or_else(|| PyValueError::new_err("Failed to allocate."))?;
 
+        let shape = vec![allocation.size() as isize];
         Ok(
             MemoryAllocationWrapper {
-                allocation
+                allocation,
+                buffer_shape: shape,
+                buffer_format: CString::new("B").unwrap()
             }
         )
     }
@@ -73,7 +80,9 @@ impl ProducerWrapper {
 #[pyclass(name="MemoryAllocation")]
 #[derive(Clone)]
 struct MemoryAllocationWrapper {
-    allocation: Arc<SmartMemoryAllocation>
+    allocation: Arc<SmartMemoryAllocation>,
+    buffer_shape: Vec<isize>,
+    buffer_format: CString
 }
 
 #[pymethods]
@@ -84,6 +93,33 @@ impl MemoryAllocationWrapper {
 
     fn copy_from(&mut self, offset: usize, data: &[u8]) {
         self.allocation.bytes_mut()[offset..offset + data.len()].copy_from_slice(data)
+    }
+}
+
+#[pyproto]
+impl PyBufferProtocol for MemoryAllocationWrapper {
+    fn bf_getbuffer(mut slf: PyRefMut<Self>, view: *mut Py_buffer, _flags: i32) -> PyResult<()> {
+        unsafe {
+            (*view).obj = slf.as_ptr();
+            (*view).buf = slf.allocation.bytes_mut().as_mut_ptr() as *mut c_void;
+            (*view).len = slf.allocation.bytes_mut().len() as isize;
+            (*view).readonly = 0;
+            (*view).itemsize = 1;
+            (*view).format = slf.buffer_format.as_ptr() as *mut _;
+            (*view).ndim = 1;
+            (*view).shape = slf.buffer_shape.as_mut_ptr();
+            (*view).strides = (&mut (*view).itemsize) as *mut isize;
+            (*view).suboffsets = std::ptr::null_mut();
+            (*view).internal = std::ptr::null_mut();
+
+            Py_INCREF(slf.as_ptr());
+        }
+
+        Ok(())
+    }
+
+    fn bf_releasebuffer(_slf: PyRefMut<Self>, _view: *mut Py_buffer) -> PyResult<()> {
+        Ok(())
     }
 }
 
