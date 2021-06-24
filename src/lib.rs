@@ -7,3 +7,6 @@ pub mod consumer;
 
 #[cfg(feature="python_wrapper")]
 pub mod python_wrapper;
+
+#[cfg(feature="c_wrapper")]
+pub mod c_wrapper;

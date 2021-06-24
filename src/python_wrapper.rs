@@ -23,7 +23,9 @@ impl ProducerWrapper {
     fn new(path: &str, shared_memory_path: &str, shared_memory_size: usize) -> PyResult<Self> {
         let tokio_runtime = Arc::new(Runtime::new().unwrap());
 
-        let shared_memory = SharedMemory::write(Path::new(shared_memory_path), shared_memory_size).unwrap();
+        let shared_memory = SharedMemory::write(Path::new(shared_memory_path), shared_memory_size)
+            .map_err(|err| PyValueError::new_err(format!("Failed to create shared memory: {:?}.", err)))?;
+
         let producer = Producer::new(Path::new(path), shared_memory.path(), shared_memory.size());
         let shared_memory_allocator = SharedMemoryAllocator::new_smart(shared_memory);
 
@@ -94,9 +96,9 @@ struct ConsumerWrapper {
 #[pymethods]
 impl ConsumerWrapper {
     #[new]
-    fn new(name: &str) -> PyResult<Self> {
+    fn new(path: &str) -> PyResult<Self> {
         let tokio_runtime = Runtime::new().unwrap();
-        let consumer = tokio_runtime.block_on(Consumer::connect(Path::new(name)))
+        let consumer = tokio_runtime.block_on(Consumer::connect(Path::new(path)))
             .map_err(|err| PyValueError::new_err(err))?;
 
         Ok(
