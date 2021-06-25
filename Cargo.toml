@@ -24,3 +24,6 @@ crate-type = ["rlib", "cdylib"]
 
 [dev-dependencies]
 opencv = "0.53"
+
+[build-dependencies]
+cbindgen = "0.19.0"

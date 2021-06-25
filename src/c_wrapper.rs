@@ -7,35 +7,34 @@ use tokio::runtime::Runtime;
 
 use crate::consumer::Consumer as ConsumerImpl;
 use crate::producer::Producer as ProducerImpl;
-use crate::shared_memory::{SmartSharedMemoryAllocator, SharedMemory, SharedMemoryAllocator, GenericMemoryAllocation};
+use crate::shared_memory::{SmartSharedMemoryAllocator, SharedMemory, SharedMemoryAllocator, GenericMemoryAllocation, SmartMemoryAllocation};
 
-#[repr(C)]
 pub struct Consumer {
     tokio_runtime: Runtime,
     consumer: ConsumerImpl
 }
 
 #[no_mangle]
-pub extern fn ipmq_create_consumer(path_ptr: *const c_char) -> Option<Box<Consumer>> {
+pub extern fn ipmq_consumer_create(path_ptr: *const c_char) -> *mut Consumer {
     let path = unsafe { CStr::from_ptr(path_ptr).to_str().unwrap() };
 
     let tokio_runtime = Runtime::new().unwrap();
     if let Ok(consumer) = tokio_runtime.block_on(ConsumerImpl::connect(Path::new(path))) {
-        Some(
+        Box::leak(
             Box::new(
                 Consumer {
                     tokio_runtime,
                     consumer
                 }
             )
-        )
+        ) as *mut _
     } else {
-        None
+        std::ptr::null_mut()
     }
 }
 
 #[no_mangle]
-pub extern fn ipmq_destroy_consumer(consumer_ptr: *mut Consumer) {
+pub extern fn ipmq_consumer_destroy(consumer_ptr: *mut Consumer) {
     unsafe {
         Box::from_raw(consumer_ptr);
     }
@@ -94,7 +93,6 @@ pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut Consumer, name_pt
     if result.is_ok() {0} else {-1}
 }
 
-#[repr(C)]
 pub struct Producer {
     tokio_runtime: Arc<Runtime>,
     producer: Arc<ProducerImpl>,
@@ -102,9 +100,9 @@ pub struct Producer {
 }
 
 #[no_mangle]
-pub extern fn ipmq_create_producer(path_ptr: *const c_char,
+pub extern fn ipmq_producer_create(path_ptr: *const c_char,
                                    shared_memory_path_ptr: *const c_char,
-                                   shared_memory_size: usize) -> Option<Box<Producer>> {
+                                   shared_memory_size: usize) -> *mut Producer {
     let path = unsafe { CStr::from_ptr(path_ptr).to_str().unwrap() };
     let shared_memory_path = unsafe { CStr::from_ptr(shared_memory_path_ptr).to_str().unwrap() };
 
@@ -112,7 +110,7 @@ pub extern fn ipmq_create_producer(path_ptr: *const c_char,
 
     let shared_memory = SharedMemory::write(Path::new(shared_memory_path), shared_memory_size);
     if shared_memory.is_err() {
-        return None;
+        return std::ptr::null_mut();
     }
     let shared_memory = shared_memory.unwrap();
 
@@ -125,7 +123,7 @@ pub extern fn ipmq_create_producer(path_ptr: *const c_char,
         tokio_runtime_clone.block_on(producer_clone.start()).unwrap();
     });
 
-    Some(
+    Box::leak(
         Box::new(
             Producer {
                 producer,
@@ -133,13 +131,46 @@ pub extern fn ipmq_create_producer(path_ptr: *const c_char,
                 shared_memory_allocator
             }
         )
+    ) as *mut _
+}
+
+#[no_mangle]
+pub extern fn ipmq_producer_destroy(producer_ptr: *mut Producer) {
+    unsafe {
+        Box::from_raw(producer_ptr);
+    }
+}
+
+pub struct MemoryAllocation {
+    allocation: Arc<SmartMemoryAllocation>,
+}
+
+#[no_mangle]
+pub extern fn ipmq_producer_allocate(producer: &Producer, size: usize) -> *mut MemoryAllocation {
+    let allocation = producer.tokio_runtime.block_on(producer.producer.allocate(&producer.shared_memory_allocator, size));
+    if allocation.is_none() {
+        return std::ptr::null_mut();
+    }
+    let allocation = allocation.unwrap();
+
+    Box::leak(
+        Box::new(
+            MemoryAllocation {
+                allocation
+            }
+        )
     )
 }
 
 #[no_mangle]
-pub extern fn ipmq_destroy_producer(producer_ptr: *mut Producer) {
+pub extern fn ipmq_producer_allocation_get_ptr(allocation: &MemoryAllocation) -> *mut u8 {
+    allocation.allocation.ptr()
+}
+
+#[no_mangle]
+pub extern fn ipmq_producer_return_allocation(allocation_ptr: *mut MemoryAllocation) {
     unsafe {
-        Box::from_raw(producer_ptr);
+        Box::from_raw(allocation_ptr);
     }
 }
 
@@ -157,5 +188,13 @@ pub extern fn ipmq_producer_publish_bytes(producer: &Producer, routing_key_ptr: 
     allocation.bytes_mut().copy_from_slice(message);
 
     producer.tokio_runtime.block_on(producer.producer.publish(routing_key, allocation));
+    0
+}
+
+#[no_mangle]
+pub extern fn ipmq_producer_publish(producer: &Producer, routing_key_ptr: *const c_char, allocation: &MemoryAllocation) -> i32 {
+    let routing_key = unsafe { CStr::from_ptr(routing_key_ptr).to_str().unwrap() };
+
+    producer.tokio_runtime.block_on(producer.producer.publish(routing_key, allocation.allocation.clone()));
     0
 }

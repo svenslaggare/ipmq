@@ -2,32 +2,9 @@
 #include <thread>
 #include <chrono>
 #include <sstream>
+#include <cstring>
 
-extern "C" {
-	/** Consumer */
-	struct Consumer;
-
-	// Create/destroy
-	Consumer* ipmq_create_consumer(const char* path);
-	void ipmq_destroy_consumer(Consumer* consumer);
-
-	// Queue management
-	int ipmq_consumer_create_queue(Consumer* consumer, const char* name, bool auto_delete, double ttl);
-int ipmq_consumer_bind_queue(Consumer* consumer, const char* name, const char* pattern);
-
-	// Consume
-	int ipmq_consumer_start_consume_queue(Consumer* consumer, const char* name, void (*callback)(std::uint64_t, const char*, std::uint64_t, const unsigned char*, std::size_t));
-
-	/** Producer */
-	struct Producer;
-
-	// Create/destroy
-	Producer* ipmq_create_producer(const char* path, const char* shared_memory_path, std::size_t shared_memory_size);
-	int ipmq_destroy_producer(Producer* producer);
-
-	// Publishing
-	int ipmq_producer_publish_bytes(Producer* producer, const char* routing_key, const unsigned char* message_data, std::size_t message_size);
-}
+#include <ipmq.h>
 
 int main(int argc, const char* argv[]) {
 	std::string command = "consumer";
@@ -36,7 +13,7 @@ int main(int argc, const char* argv[]) {
 	}
 
 	if (command == "consumer") {
-		auto consumer = ipmq_create_consumer("../test.queue");
+		auto consumer = ipmq_consumer_create("../test.queue");
 
 		if (consumer != nullptr) {
 			ipmq_consumer_create_queue(consumer, "test", true, -1.0);
@@ -51,25 +28,32 @@ int main(int argc, const char* argv[]) {
 				}
 			);
 
-			ipmq_destroy_consumer(consumer);
+			ipmq_consumer_destroy(consumer);
 		}
 	}
 
 	if (command == "producer") {
-		auto producer = ipmq_create_producer("../test.queue", "/dev/shm/test.data", 2048);
+		auto producer = ipmq_producer_create("../test.queue", "/dev/shm/test.data", 2048);
 		if (producer != nullptr) {
 			int number = 1;
 			while (true) {
 				std::stringstream messageStream;
 				messageStream << "Hello, World #" << number << "!";
 				std::string message = messageStream.str();
-				ipmq_producer_publish_bytes(producer, "test", (unsigned char*)message.data(), message.size());
+
+//				ipmq_producer_publish_bytes(producer, "test", (unsigned char*)message.data(), message.size());
+
+				auto allocation = ipmq_producer_allocate(producer, message.size());
+				auto allocation_ptr = ipmq_producer_allocation_get_ptr(allocation);
+				std::memcpy(allocation_ptr, (unsigned char*)message.data(), message.size());
+				ipmq_producer_publish(producer, "test", allocation);
+				ipmq_producer_return_allocation(allocation);
 
 				std::this_thread::sleep_for(std::chrono::milliseconds(200));
 				number += 1;
 			}
 
-			ipmq_destroy_producer(producer);
+			ipmq_producer_destroy(producer);
 		}
 	}
 

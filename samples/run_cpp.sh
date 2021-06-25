@@ -6,5 +6,5 @@ pushd build
 cmake ..
 make all
 popd
-./build/sample consumer
+./build/sample $@
 

@@ -9,6 +9,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::{PyBufferProtocol};
 use pyo3::ffi::{Py_buffer, Py_INCREF};
 use pyo3::AsPyPointer;
+use pyo3::types::PyList;
 
 use crate::consumer::Consumer;
 use crate::producer::Producer;
@@ -16,7 +17,6 @@ use crate::shared_memory::{SharedMemory, SharedMemoryAllocator, SmartSharedMemor
 use crate::exchange::QueueId;
 use crate::queue::MessageId;
 use crate::command::Command;
-use pyo3::types::PyList;
 
 #[pyclass(name="Producer")]
 struct ProducerWrapper {
