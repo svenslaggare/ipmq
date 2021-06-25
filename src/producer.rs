@@ -203,6 +203,12 @@ impl Producer {
                         Command::StartConsume(queue_name) => {
                             if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
                                 queue.add_client(client_id).await;
+                            } else {
+                                if let Some(client) = self.clients.lock().await.get(&client_id) {
+                                    if client.sender.send(Command::FailedToStartConsume).is_err() {
+                                        break;
+                                    }
+                                }
                             }
                         }
                         Command::Acknowledge(queue_id, message_id) => {
@@ -214,7 +220,9 @@ impl Producer {
                             if let Some(queue) = self.exchange.lock().await.get_queue_by_id(queue_id) {
                                 if queue.remove_client(client_id).await {
                                     if let Some(client) = self.clients.lock().await.get(&client_id) {
-                                        client.sender.send(Command::StoppedConsuming).unwrap();
+                                        if client.sender.send(Command::StoppedConsuming).is_err() {
+                                           break;
+                                        }
                                     }
                                 }
                             }
@@ -223,11 +231,12 @@ impl Producer {
                     }
                 }
                 Err(_) => {
-                    self.remove_client(client_id).await;
                     break;
                 }
             }
         }
+
+        self.remove_client(client_id).await;
     }
 
     /// Tries to consume from the given queue

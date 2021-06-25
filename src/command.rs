@@ -15,6 +15,7 @@ pub enum Command {
     Message(Message),
     Acknowledge(QueueId, MessageId),
     StopConsume(QueueId),
+    FailedToStartConsume,
     StoppedConsuming
 }
 

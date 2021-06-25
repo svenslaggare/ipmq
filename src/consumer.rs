@@ -74,6 +74,9 @@ impl Consumer {
                                 println!("Received message without shared memory.");
                             }
                         }
+                        Command::FailedToStartConsume => {
+                            break;
+                        }
                         Command::StoppedConsuming => {
                             break;
                         }
