@@ -29,7 +29,7 @@ async fn main_producer() {
 
     let shared_memory = SharedMemory::write(Path::new("/dev/shm/test.data"), 2048).unwrap();
 
-    let producer = Producer::new(Path::new("test.queue"), shared_memory.path(), shared_memory.size());
+    let producer = Producer::new(Path::new("test.queue"), &shared_memory);
 
     let producer_clone = producer.clone();
     tokio::spawn(async move {
@@ -65,15 +65,17 @@ async fn main_consumer(queue: Option<String>) {
     consumer.bind_queue(&queue, ".*").await.unwrap();
     consumer.start_consume_queue(&queue).await.unwrap();
 
-    consumer.handle_messages::<_, ()>(|shared_memory, message| {
+    consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
         let buffer = shared_memory.bytes_from_data(&message.data);
         let data_str = std::str::from_utf8(buffer).unwrap();
         println!("{}: {}", message.id, data_str);
-        Ok(Some(message.acknowledgement()))
-        // if message.id % 10 == 0 {
-        //     None
-        // } else {
-        //     Some(message.acknowledgement())
-        // }
+
+        commands.push(message.acknowledgement());
+
+        if message.id == 10 {
+            commands.push(message.stop_consume());
+        }
+
+        Ok(())
     }).await.unwrap();
 }

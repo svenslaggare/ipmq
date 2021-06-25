@@ -13,7 +13,9 @@ pub enum Command {
     StartConsume(String),
     SharedMemoryArea(String, usize),
     Message(Message),
-    Acknowledge(QueueId, MessageId)
+    Acknowledge(QueueId, MessageId),
+    StopConsume(QueueId),
+    StoppedConsuming
 }
 
 impl Command {
@@ -53,6 +55,10 @@ impl Message {
 
     pub fn acknowledgement(&self) -> Command {
         Command::Acknowledge(self.queue_id, self.id)
+    }
+
+    pub fn stop_consume(&self) -> Command {
+        Command::StopConsume(self.queue_id)
     }
 }
 

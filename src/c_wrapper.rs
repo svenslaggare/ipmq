@@ -74,7 +74,7 @@ pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut Consumer, name_pt
     }
 
     let result = consumer.tokio_runtime.block_on(
-        consumer.consumer.handle_messages::<_, ()>(|shared_memory, message| {
+        consumer.consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
             let buffer = shared_memory.bytes_from_data(&message.data);
 
             let routing_key: CString = CString::new(message.routing_key.clone()).unwrap();
@@ -86,7 +86,8 @@ pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut Consumer, name_pt
                 buffer.len()
             );
 
-            Ok(Some(message.acknowledgement()))
+            commands.push(message.acknowledgement());
+            Ok(())
         })
     );
 
@@ -115,7 +116,7 @@ pub extern fn ipmq_create_producer(path_ptr: *const c_char,
     }
     let shared_memory = shared_memory.unwrap();
 
-    let producer = ProducerImpl::new(Path::new(path), shared_memory.path(), shared_memory.size());
+    let producer = ProducerImpl::new(Path::new(path), &shared_memory);
     let shared_memory_allocator = SharedMemoryAllocator::new_smart(shared_memory);
 
     let tokio_runtime_clone = tokio_runtime.clone();

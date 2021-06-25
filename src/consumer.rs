@@ -42,9 +42,9 @@ impl Consumer {
         Ok(())
     }
 
-    /// Handles messages from the queue.
-    /// Callback invoked on each message, return value is a command to send in response to the server (typically ack).
-    pub async fn handle_messages<F: FnMut(&mut SharedMemory, Message) -> Result<Option<Command>, E>, E>(&mut self, mut on_message: F) -> Result<(), E> {
+    /// Handles messages from the queue using the given callback.
+    /// Commands can be sent back to the producer (typically ack) using the first argument to the callback.
+    pub async fn handle_messages<F: FnMut(&mut Vec<Command>, &mut SharedMemory, Message) -> Result<(), E>, E>(&mut self, mut on_message: F) -> Result<(), E> {
         loop {
             match Command::receive_command(&mut self.stream).await {
                 Ok(command) => {
@@ -62,12 +62,20 @@ impl Consumer {
                         }
                         Command::Message(message) => {
                             if let Some(shared_memory) = self.shared_memory.as_mut() {
-                                if let Some(new_command) = on_message(shared_memory, message)? {
-                                    new_command.send_command(&mut self.stream).await.unwrap();
+                                let mut commands = Vec::new();
+                                on_message(&mut commands, shared_memory, message)?;
+
+                                for new_command in commands {
+                                    if new_command.send_command(&mut self.stream).await.is_err() {
+                                        break;
+                                    }
                                 }
                             } else {
                                 println!("Received message without shared memory.");
                             }
+                        }
+                        Command::StoppedConsuming => {
+                            break;
                         }
                         _ => {
                             println!("Unhandled command: {:?}", command);

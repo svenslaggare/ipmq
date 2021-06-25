@@ -1,4 +1,3 @@
-use std::sync::{Arc};
 use std::path::Path;
 
 use opencv::videoio::VideoCapture;
@@ -56,7 +55,7 @@ async fn main_producer() {
     let frame_size = frame_data_size + metadata_size;
     let shared_memory = SharedMemory::write(Path::new("/dev/shm/test.data"), frame_size * 3).unwrap();
 
-    let producer = Producer::new(Path::new("test.queue"), shared_memory.path(), shared_memory.size());
+    let producer = Producer::new(Path::new("test.queue"), &shared_memory);
 
     let producer_clone = producer.clone();
     tokio::spawn(async move {
@@ -108,7 +107,7 @@ async fn main_consumer(queue: Option<String>) {
     consumer.bind_queue(&queue, ".*").await.unwrap();
     consumer.start_consume_queue(&queue).await.unwrap();
 
-    consumer.handle_messages::<_, ()>(|shared_memory, message| {
+    consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
         let metadata_size = std::mem::size_of::<CameraMetadata>();
         let buffer = shared_memory.bytes_mut_from_data(&message.data);
         let frame_metadata = unsafe { std::ptr::read(buffer[..metadata_size].as_ptr() as *const CameraMetadata) };
@@ -125,6 +124,7 @@ async fn main_consumer(queue: Option<String>) {
         opencv::highgui::imshow(format!("Queue: {}", queue).as_str(), &frame).unwrap();
         opencv::highgui::wait_key(1).unwrap();
 
-        Ok(Some(message.acknowledgement()))
+        commands.push(message.acknowledgement());
+        Ok(())
     }).await.unwrap();
 }

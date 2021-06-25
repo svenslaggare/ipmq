@@ -14,7 +14,7 @@ use tokio::time::Duration;
 use crate::queue::{Queue, ClientId};
 use crate::command::{Command, Message};
 use crate::exchange::{Exchange, QueueId, ExchangeQueue, ExchangeQueueOptions, QueueMessage, QueueMessageData};
-use crate::shared_memory::{SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation};
+use crate::shared_memory::{SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation, SharedMemory};
 
 pub struct ProducerClient {
     pub sender: UnboundedSender<Command>,
@@ -31,14 +31,14 @@ pub struct Producer {
 
 impl Producer {
     /// Creates a new producer at the given path using the given existing shared memory file
-    pub fn new(path: &Path, shared_memory_file: &Path, shared_memory_size: usize) -> Arc<Producer> {
+    pub fn new(path: &Path, shared_memory: &SharedMemory) -> Arc<Producer> {
         Arc::new(
             Producer {
                 path: path.to_owned(),
                 next_client_id: AtomicU64::new(1),
                 clients: Mutex::new(HashMap::new()),
                 exchange: Mutex::new(Exchange::new()),
-                shared_memory_spec: (shared_memory_file.to_owned(), shared_memory_size)
+                shared_memory_spec: (shared_memory.path().to_owned(), shared_memory.size())
             }
         )
     }
@@ -142,7 +142,7 @@ impl Producer {
         ).send_command(&mut writer).await.is_ok();
 
         if !success {
-            self.exchange.lock().await.remove_client(client_id).await;
+            self.remove_client(client_id).await;
             return;
         }
 
@@ -178,7 +178,7 @@ impl Producer {
                                   mut writer: OwnedWriteHalf) {
         while let Some(command) = client_receiver.recv().await {
             if command.send_command(&mut writer).await.is_err() {
-                self.exchange.lock().await.remove_client(client_id).await;
+                self.remove_client(client_id).await;
                 break;
             }
         }
@@ -210,11 +210,20 @@ impl Producer {
                                 queue.acknowledge(client_id, message_id).await;
                             }
                         }
+                        Command::StopConsume(queue_id) => {
+                            if let Some(queue) = self.exchange.lock().await.get_queue_by_id(queue_id) {
+                                if queue.remove_client(client_id).await {
+                                    if let Some(client) = self.clients.lock().await.get(&client_id) {
+                                        client.sender.send(Command::StoppedConsuming).unwrap();
+                                    }
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
                 Err(_) => {
-                    self.exchange.lock().await.remove_client(client_id).await;
+                    self.remove_client(client_id).await;
                     break;
                 }
             }
@@ -224,7 +233,7 @@ impl Producer {
     /// Tries to consume from the given queue
     async fn try_consume_queue(&self, queue_id: QueueId, queue: &mut Queue<QueueMessage>) {
         while queue.len() > 0 {
-            let mut clients = self.clients.lock().await;
+            let clients = self.clients.lock().await;
 
             if clients.len() > 0 {
                 if let Some(client_id) = queue.find_client_to_receive_message() {
@@ -232,11 +241,9 @@ impl Producer {
                         let (message_id, message) = queue.pop(client_id).unwrap();
                         let message = Message::new(queue_id, message.routing_key.clone(), message_id, message.data.message_data());
                         if client.sender.send(Command::Message(message)).is_err() {
-                            clients.remove(&client_id);
                             queue.remove_client(client_id);
                         }
                     } else {
-                        clients.remove(&client_id);
                         queue.remove_client(client_id);
                     }
                 } else {
@@ -246,5 +253,10 @@ impl Producer {
                 break;
             }
         }
+    }
+
+    async fn remove_client(&self, client_id: ClientId) {
+        self.exchange.lock().await.remove_client(client_id).await;
+        self.clients.lock().await.remove(&client_id);
     }
 }
