@@ -50,7 +50,13 @@ async fn main_producer() {
 
             number += 1;
             producer_clone.publish("test", allocation).await;
+
+            // if number >= 10 {
+            //     break;
+            // }
         }
+
+        // producer_clone.stop();
     });
 
     producer.start().await.unwrap();
@@ -73,9 +79,9 @@ async fn main_consumer(queue: Option<String>) {
 
         commands.push(message.acknowledgement());
 
-        if message.id == 10 {
-            commands.push(message.stop_consume());
-        }
+        // if message.id == 10 {
+        //     commands.push(message.stop_consume());
+        // }
 
         // number += 1;
         // if number % 10 == 0 {

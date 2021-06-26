@@ -160,6 +160,11 @@ pub extern fn ipmq_producer_destroy(producer_ptr: *mut Producer) {
     }
 }
 
+#[no_mangle]
+pub extern fn ipmq_producer_stop(producer: &Producer) {
+    producer.producer.stop();
+}
+
 pub struct MemoryAllocation {
     allocation: Arc<SmartMemoryAllocation>,
 }

@@ -52,6 +52,10 @@ impl ProducerWrapper {
         )
     }
 
+    fn stop(&self) {
+        self.producer.stop();
+    }
+
     fn allocate(&mut self, size: usize) -> PyResult<MemoryAllocationWrapper> {
         let allocation = self.tokio_runtime.block_on(self.producer.allocate(&self.shared_memory_allocator, size))
             .ok_or_else(|| PyValueError::new_err("Failed to allocate."))?;

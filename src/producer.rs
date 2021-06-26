@@ -6,7 +6,7 @@ use std::ops::DerefMut;
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::net::unix::{OwnedWriteHalf, OwnedReadHalf};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, Notify};
 use tokio::net::{UnixStream, UnixListener};
 use tokio::time;
 use tokio::time::Duration;
@@ -26,7 +26,8 @@ pub struct Producer {
     next_client_id: AtomicU64,
     clients: Mutex<HashMap<ClientId, ProducerClient>>,
     exchange: Mutex<Exchange>,
-    shared_memory_spec: (PathBuf, usize)
+    shared_memory_spec: (PathBuf, usize),
+    stop_notify: Notify
 }
 
 impl Producer {
@@ -38,7 +39,8 @@ impl Producer {
                 next_client_id: AtomicU64::new(1),
                 clients: Mutex::new(HashMap::new()),
                 exchange: Mutex::new(Exchange::new()),
-                shared_memory_spec: (shared_memory.path().to_owned(), shared_memory.size())
+                shared_memory_spec: (shared_memory.path().to_owned(), shared_memory.size()),
+                stop_notify: Notify::new()
             }
         )
     }
@@ -51,15 +53,29 @@ impl Producer {
 
         let listener = UnixListener::bind(&self.path)?;
         loop {
-            match listener.accept().await {
-                Ok((stream, _)) => {
-                    self.start_handle_client(stream).await;
-                }
-                Err(e) => {
-                    println!("Failed accepting client: {:?}", e);
-                }
+            tokio::select! {
+                _  = self.stop_notify.notified() => { break; }
+                _  = self.accept_client(&listener) => {}
             }
         }
+
+        Ok(())
+    }
+
+    async fn accept_client(self: &Arc<Self>, listener: &UnixListener) {
+        match listener.accept().await {
+            Ok((stream, _)) => {
+                self.start_handle_client(stream).await;
+            }
+            Err(e) => {
+                println!("Failed accepting client: {:?}", e);
+            }
+        }
+    }
+
+    /// Stops the producer
+    pub fn stop(&self) {
+        self.stop_notify.notify_one();
     }
 
     /// Creates a new queue
