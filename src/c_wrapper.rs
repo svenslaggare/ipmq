@@ -8,6 +8,9 @@ use tokio::runtime::Runtime;
 use crate::consumer::Consumer as ConsumerImpl;
 use crate::producer::Producer as ProducerImpl;
 use crate::shared_memory::{SmartSharedMemoryAllocator, SharedMemory, SharedMemoryAllocator, GenericMemoryAllocation, SmartMemoryAllocation};
+use crate::command::Command;
+use crate::exchange::QueueId;
+use crate::queue::MessageId;
 
 pub struct Consumer {
     tokio_runtime: Runtime,
@@ -20,14 +23,12 @@ pub extern fn ipmq_consumer_create(path_ptr: *const c_char) -> *mut Consumer {
 
     let tokio_runtime = Runtime::new().unwrap();
     if let Ok(consumer) = tokio_runtime.block_on(ConsumerImpl::connect(Path::new(path))) {
-        Box::leak(
-            Box::new(
-                Consumer {
-                    tokio_runtime,
-                    consumer
-                }
-            )
-        ) as *mut _
+        heap_allocate(
+            Consumer {
+                tokio_runtime,
+                consumer
+            }
+        )
     } else {
         std::ptr::null_mut()
     }
@@ -64,8 +65,12 @@ pub extern fn ipmq_consumer_bind_queue(consumer: &mut Consumer, name_ptr: *const
     }
 }
 
+pub struct Commands<'a>(&'a mut Vec<Command>);
+
 #[no_mangle]
-pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut Consumer, name_ptr: *const c_char, callback: extern fn(u64, *const c_char, u64, *const u8, usize)) -> i32 {
+pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut Consumer,
+                                                name_ptr: *const c_char,
+                                                callback: extern fn(*mut Commands, u64, *const c_char, u64, *const u8, usize)) -> i32 {
     let name = unsafe { CStr::from_ptr(name_ptr).to_str().unwrap() };
 
     if let Err(_) = consumer.tokio_runtime.block_on(consumer.consumer.start_consume_queue(name)) {
@@ -76,8 +81,10 @@ pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut Consumer, name_pt
         consumer.consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
             let buffer = shared_memory.bytes_from_data(&message.data);
 
+            let mut commands_wrapper = Commands(commands);
             let routing_key: CString = CString::new(message.routing_key.clone()).unwrap();
             callback(
+                &mut commands_wrapper as *mut _,
                 message.queue_id,
                 routing_key.as_ptr(),
                 message.id,
@@ -85,12 +92,21 @@ pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut Consumer, name_pt
                 buffer.len()
             );
 
-            commands.push(message.acknowledgement());
             Ok(())
         })
     );
 
     if result.is_ok() {0} else {-1}
+}
+
+#[no_mangle]
+pub extern fn ipmq_consumer_add_ack_command(commands: &mut Commands, queue_id: QueueId, message_id: MessageId) {
+    commands.0.push(Command::Acknowledge(queue_id, message_id));
+}
+
+#[no_mangle]
+pub extern fn ipmq_consumer_add_stop_consume_command(commands: &mut Commands, queue_id: QueueId) {
+    commands.0.push(Command::StopConsume(queue_id));
 }
 
 pub struct Producer {
@@ -123,15 +139,13 @@ pub extern fn ipmq_producer_create(path_ptr: *const c_char,
         tokio_runtime_clone.block_on(producer_clone.start()).unwrap();
     });
 
-    Box::leak(
-        Box::new(
-            Producer {
-                producer,
-                tokio_runtime,
-                shared_memory_allocator
-            }
-        )
-    ) as *mut _
+    heap_allocate(
+        Producer {
+            producer,
+            tokio_runtime,
+            shared_memory_allocator
+        }
+    )
 }
 
 #[no_mangle]
@@ -153,12 +167,10 @@ pub extern fn ipmq_producer_allocate(producer: &Producer, size: usize) -> *mut M
     }
     let allocation = allocation.unwrap();
 
-    Box::leak(
-        Box::new(
-            MemoryAllocation {
-                allocation
-            }
-        )
+    heap_allocate(
+        MemoryAllocation {
+            allocation
+        }
     )
 }
 
@@ -197,4 +209,9 @@ pub extern fn ipmq_producer_publish(producer: &Producer, routing_key_ptr: *const
 
     producer.tokio_runtime.block_on(producer.producer.publish(routing_key, allocation.allocation.clone()));
     0
+}
+
+
+fn heap_allocate<T>(x: T) -> *mut T {
+    Box::leak(Box::new(x)) as *mut _
 }

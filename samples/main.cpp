@@ -22,9 +22,14 @@ int main(int argc, const char* argv[]) {
 			ipmq_consumer_start_consume_queue(
 				consumer,
 				"test",
-				[](std::uint64_t queueId, const char* routingKey, std::uint64_t messageId, const unsigned char* message, std::size_t size) {
+				[](Commands* commands, std::uint64_t queueId, const char* routingKey, std::uint64_t messageId, const unsigned char* message, std::size_t size) {
 					std::string messageStr((const char*)message, size);
 					std::cout << "(" << messageId << ", " << routingKey << "): " << messageStr << std::endl;
+					ipmq_consumer_add_ack_command(commands, queueId, messageId);
+
+					if (messageId == 10) {
+						ipmq_consumer_add_stop_consume_command(commands, queueId);
+					}
 				}
 			);
 
