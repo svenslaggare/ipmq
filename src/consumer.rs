@@ -2,8 +2,24 @@ use std::path::Path;
 
 use tokio::net::UnixStream;
 
-use crate::shared_memory::SharedMemory;
+use crate::shared_memory::{SharedMemory, SharedMemoryError};
 use crate::command::{Command, Message};
+
+#[derive(Debug)]
+pub enum ConsumerError {
+    IO(tokio::io::Error),
+    FailedToCreateSharedMemory(SharedMemoryError),
+    InvalidBindPattern(String),
+    UnexpectedCommand(Command)
+}
+
+impl From<tokio::io::Error> for ConsumerError {
+    fn from(err: tokio::io::Error) -> Self {
+        ConsumerError::IO(err)
+    }
+}
+
+pub type ConsumeResult<T> = Result<T, ConsumerError>;
 
 /// Represents a consumer of messages
 pub struct Consumer {
@@ -13,31 +29,52 @@ pub struct Consumer {
 
 impl Consumer {
     /// Tries to connect to the producer at the given path
-    pub async fn connect(path: &Path) -> tokio::io::Result<Consumer> {
-        let stream = UnixStream::connect(path).await?;
+    pub async fn connect(path: &Path) -> ConsumeResult<Consumer> {
+        let mut stream = UnixStream::connect(path).await?;
+
+        let response = Command::receive_command(&mut stream).await?;
+        let shared_memory = match response {
+            Command::SharedMemoryArea(path, size) => {
+                match SharedMemory::read(Path::new(&path), size) {
+                    Ok(shared_memory) => Some(shared_memory),
+                    Err(err) => { return Err(ConsumerError::FailedToCreateSharedMemory(err)); }
+                }
+            }
+            _ => None
+        };
 
         Ok(
             Consumer {
                 stream,
-                shared_memory: None
+                shared_memory
             }
         )
     }
 
     /// Sends a command to create a new queue in the message queue
-    pub async fn create_queue(&mut self, name: &str, auto_delete: bool, ttl: Option<f64>) -> tokio::io::Result<()> {
+    pub async fn create_queue(&mut self, name: &str, auto_delete: bool, ttl: Option<f64>) -> ConsumeResult<()> {
         Command::CreateQueue { name: name.to_owned(), auto_delete, ttl }.send_command(&mut self.stream).await?;
         Ok(())
     }
 
     /// Sends a command to bind the given queue to the given pattern
-    pub async fn bind_queue(&mut self, name: &str, pattern: &str) -> tokio::io::Result<()> {
+    pub async fn bind_queue(&mut self, name: &str, pattern: &str) -> ConsumeResult<()> {
         Command::BindQueue(name.to_owned(), pattern.to_owned()).send_command(&mut self.stream).await?;
+        let response = Command::receive_command(&mut self.stream).await?;
+        match response {
+            Command::BindQueueResult(result) => {
+                if let Some(err) = result {
+                    return Err(ConsumerError::InvalidBindPattern(err));
+                }
+            }
+            _ => { return Err(ConsumerError::UnexpectedCommand(response)); }
+        }
+
         Ok(())
     }
 
     /// Sends a command to start consuming from the given queue
-    pub async fn start_consume_queue(&mut self, name: &str) -> tokio::io::Result<()> {
+    pub async fn start_consume_queue(&mut self, name: &str) -> ConsumeResult<()> {
         Command::StartConsume(name.to_owned()).send_command(&mut self.stream).await?;
         Ok(())
     }

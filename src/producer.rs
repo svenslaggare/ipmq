@@ -194,9 +194,19 @@ impl Producer {
                             self.create_queue(&name, ExchangeQueueOptions { auto_delete, ttl }).await;
                         }
                         Command::BindQueue(queue_name, pattern) => {
-                            if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
+                            let command = if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
                                 if let Err(err) = queue.add_binding(&pattern).await {
-                                    println!("Error for #{}: Invalid regex pattern: {:?}", client_id, err);
+                                    Some(format!("Invalid bind pattern: {:?}", err))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                Some("Queue not found.".to_owned())
+                            };
+
+                            if let Some(client) = self.clients.lock().await.get(&client_id) {
+                                if client.sender.send(Command::BindQueueResult(command)).is_err() {
+                                    break;
                                 }
                             }
                         }

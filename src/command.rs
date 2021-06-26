@@ -10,12 +10,13 @@ use crate::exchange::{QueueId};
 pub enum Command {
     CreateQueue { name: String, auto_delete: bool, ttl: Option<f64> },
     BindQueue(String, String),
+    BindQueueResult(Option<String>),
     StartConsume(String),
+    FailedToStartConsume,
     SharedMemoryArea(String, usize),
     Message(Message),
     Acknowledge(QueueId, MessageId),
     StopConsume(QueueId),
-    FailedToStartConsume,
     StoppedConsuming
 }
 
