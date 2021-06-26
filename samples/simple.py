@@ -25,12 +25,12 @@ def consumer():
     consumer.create_queue("test", True)
     consumer.bind_queue("test", ".*")
 
-    def callback(commands: list, queue_id: int, routing_key: str, message_id: int, message):
+    def callback(commands, queue_id: int, routing_key: str, message_id: int, message):
         print("{}: {}".format(message_id, message.decode("utf-8")))
-        commands.append(libipmq.Command.acknowledgement(queue_id, message_id))
+        commands.acknowledge(queue_id, message_id)
 
         if message_id == 10:
-            commands.append(libipmq.Command.stop_consume(queue_id,))
+            commands.stop_consume(queue_id)
 
     consumer.start_consume_queue("test", callback)
 

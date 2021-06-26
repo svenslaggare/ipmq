@@ -9,7 +9,6 @@ use pyo3::exceptions::PyValueError;
 use pyo3::{PyBufferProtocol};
 use pyo3::ffi::{Py_buffer, Py_INCREF};
 use pyo3::AsPyPointer;
-use pyo3::types::PyList;
 
 use crate::consumer::{Consumer};
 use crate::producer::Producer;
@@ -172,17 +171,16 @@ impl ConsumerWrapper {
         self.tokio_runtime.block_on(
             self.consumer.handle_messages::<_, PyErr>(|commands, shared_memory, message| {
                 let buffer = shared_memory.bytes_from_data(&message.data);
-                let callback_commands = PyList::empty(py);
+
+                let callback_commands = PyCell::new(py, CommandsWrapper { commands: Vec::new() })?;
 
                 callback.call1(
                     py,
                     (callback_commands, message.queue_id, &message.routing_key, message.id, buffer)
                 )?;
 
-                for command in callback_commands {
-                    let command: CommandWrapper = command.extract()?;
-                    commands.push(command.command().ok_or_else(|| PyValueError::new_err("invalid command"))?);
-                }
+                let mut callback_commands: CommandsWrapper = callback_commands.extract()?;
+                commands.append(&mut callback_commands.commands);
 
                 Ok(())
             })
@@ -190,52 +188,24 @@ impl ConsumerWrapper {
     }
 }
 
-#[pyclass(name="Command")]
+#[pyclass(name="Commands")]
 #[derive(Clone)]
-struct CommandWrapper {
-    command_id: u64,
-    queue_id: QueueId,
-    message_id: MessageId
+struct CommandsWrapper {
+    commands: Vec<Command>
 }
 
 #[pymethods]
-impl CommandWrapper {
-    #[staticmethod]
-    fn acknowledgement(queue_id: QueueId, message_id: MessageId) -> CommandWrapper {
-        CommandWrapper {
-            command_id: 1,
-            queue_id,
-            message_id
-        }
+impl CommandsWrapper {
+    fn acknowledge(&mut self, queue_id: QueueId, message_id: MessageId) {
+        self.commands.push(Command::Acknowledge(queue_id, message_id));
     }
 
-    #[staticmethod]
-    fn negative_acknowledgement(queue_id: QueueId, message_id: MessageId) -> CommandWrapper {
-        CommandWrapper {
-            command_id: 2,
-            queue_id,
-            message_id
-        }
+    fn negative_acknowledge(&mut self, queue_id: QueueId, message_id: MessageId) {
+        self.commands.push(Command::NegativeAcknowledge(queue_id, message_id));
     }
 
-    #[staticmethod]
-    fn stop_consume(queue_id: QueueId) -> CommandWrapper {
-        CommandWrapper {
-            command_id: 3,
-            queue_id,
-            message_id: 0
-        }
-    }
-}
-
-impl CommandWrapper {
-    fn command(&self) -> Option<Command> {
-        match self.command_id {
-            1 => Some(Command::Acknowledge(self.queue_id, self.message_id)),
-            2 => Some(Command::NegativeAcknowledge(self.queue_id, self.message_id)),
-            3 => Some(Command::StopConsume(self.queue_id)),
-            _ => None
-        }
+    fn stop_consume(&mut self, queue_id: QueueId) {
+        self.commands.push(Command::StopConsume(queue_id));
     }
 }
 
@@ -244,6 +214,6 @@ fn libipmq(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<ProducerWrapper>()?;
     m.add_class::<MemoryAllocationWrapper>()?;
     m.add_class::<ConsumerWrapper>()?;
-    m.add_class::<CommandWrapper>()?;
+    m.add_class::<CommandsWrapper>()?;
     Ok(())
 }

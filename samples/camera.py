@@ -43,11 +43,13 @@ def consumer():
     consumer.create_queue("test", True)
     consumer.bind_queue("test", ".*")
 
-    def callback(queue_id, routing_key, message_id, message):
+    def callback(commands, queue_id, routing_key, message_id, message):
         width, height, img_format = struct.unpack("iii", message[:12])
         frame = np.frombuffer(message[12:], np.uint8).reshape((height, width, 3))
         cv2.imshow("Frame - {}x{}".format(width, height), frame)
         cv2.waitKey(1)
+
+        commands.acknowledge(queue_id, message_id)
 
     consumer.start_consume_queue("test", callback)
 
