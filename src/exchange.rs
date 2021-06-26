@@ -159,6 +159,12 @@ impl ExchangeQueue {
         self.notify.notify_one();
     }
 
+    /// Negative acknowledges the given message (putting it back into the queue)
+    pub async fn negative_acknowledge(&self, client_id: ClientId, message_id: MessageId) {
+        self.queue.lock().await.negative_acknowledge(client_id, message_id);
+        self.notify.notify_one();
+    }
+
     /// Tries to remove the oldest message from the queue
     pub async fn remove_oldest(&self) -> bool {
         self.queue.lock().await.remove_oldest()

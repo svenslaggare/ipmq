@@ -65,6 +65,7 @@ async fn main_consumer(queue: Option<String>) {
     consumer.bind_queue(&queue, ".*").await.unwrap();
     consumer.start_consume_queue(&queue).await.unwrap();
 
+    // let mut number = 0;
     consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
         let buffer = shared_memory.bytes_from_data(&message.data);
         let data_str = std::str::from_utf8(buffer).unwrap();
@@ -75,6 +76,13 @@ async fn main_consumer(queue: Option<String>) {
         if message.id == 10 {
             commands.push(message.stop_consume());
         }
+
+        // number += 1;
+        // if number % 10 == 0 {
+        //     commands.push(message.negative_acknowledgement());
+        // } else {
+        //     commands.push(message.acknowledgement());
+        // }
 
         Ok(())
     }).await.unwrap();

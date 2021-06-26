@@ -78,6 +78,20 @@ impl<T> Queue<T> {
         }
     }
 
+    /// Negative acknowledges the given message, putting it back into the end of the queue
+    pub fn negative_acknowledge(&mut self, client_id: ClientId, message_id: MessageId) -> bool {
+        if let Some(unacknowledged) = self.unacknowledged.get_mut(&client_id) {
+            if unacknowledged.remove(&message_id) {
+                self.queue.push_back(message_id);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
     /// Removes the oldest message from the queue (including unacknowledged)
     pub fn remove_oldest(&mut self) -> bool {
         let remove_unacknowledged = |self_ref: &mut Self, message_id| {

@@ -105,6 +105,11 @@ pub extern fn ipmq_consumer_add_ack_command(commands: &mut Commands, queue_id: Q
 }
 
 #[no_mangle]
+pub extern fn ipmq_consumer_add_nack_command(commands: &mut Commands, queue_id: QueueId, message_id: MessageId) {
+    commands.0.push(Command::NegativeAcknowledge(queue_id, message_id));
+}
+
+#[no_mangle]
 pub extern fn ipmq_consumer_add_stop_consume_command(commands: &mut Commands, queue_id: QueueId) {
     commands.0.push(Command::StopConsume(queue_id));
 }

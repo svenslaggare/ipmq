@@ -11,7 +11,7 @@ use pyo3::ffi::{Py_buffer, Py_INCREF};
 use pyo3::AsPyPointer;
 use pyo3::types::PyList;
 
-use crate::consumer::Consumer;
+use crate::consumer::{Consumer};
 use crate::producer::Producer;
 use crate::shared_memory::{SharedMemory, SharedMemoryAllocator, SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation};
 use crate::exchange::QueueId;
@@ -139,7 +139,7 @@ impl ConsumerWrapper {
     fn new(path: &str) -> PyResult<Self> {
         let tokio_runtime = Runtime::new().unwrap();
         let consumer = tokio_runtime.block_on(Consumer::connect(Path::new(path)))
-            .map_err(|err| PyValueError::new_err(err))?;
+            .map_err(|err| PyValueError::new_err(format!("{:?}", err)))?;
 
         Ok(
             ConsumerWrapper {
@@ -151,19 +151,19 @@ impl ConsumerWrapper {
 
     fn create_queue(&mut self, name: &str, auto_delete: bool, ttl: Option<f64>) -> PyResult<()> {
         self.tokio_runtime.block_on(self.consumer.create_queue(name, auto_delete, ttl))
-            .map_err(|err| PyValueError::new_err(err))?;
+            .map_err(|err| PyValueError::new_err(format!("{:?}", err)))?;
         Ok(())
     }
 
     fn bind_queue(&mut self, name: &str, pattern: &str) -> PyResult<()>  {
         self.tokio_runtime.block_on(self.consumer.bind_queue(name, pattern))
-            .map_err(|err| PyValueError::new_err(err))?;
+            .map_err(|err| PyValueError::new_err(format!("{:?}", err)))?;
         Ok(())
     }
 
     fn start_consume_queue(&mut self, py: Python, name: &str, callback: PyObject) -> PyResult<()>  {
         self.tokio_runtime.block_on(self.consumer.start_consume_queue(name))
-            .map_err(|err| PyValueError::new_err(err))?;
+            .map_err(|err| PyValueError::new_err(format!("{:?}", err)))?;
 
         self.tokio_runtime.block_on(
             self.consumer.handle_messages::<_, PyErr>(|commands, shared_memory, message| {
@@ -206,9 +206,18 @@ impl CommandWrapper {
     }
 
     #[staticmethod]
-    fn stop_consume(queue_id: QueueId) -> CommandWrapper {
+    fn negative_acknowledgement(queue_id: QueueId, message_id: MessageId) -> CommandWrapper {
         CommandWrapper {
             command_id: 2,
+            queue_id,
+            message_id
+        }
+    }
+
+    #[staticmethod]
+    fn stop_consume(queue_id: QueueId) -> CommandWrapper {
+        CommandWrapper {
+            command_id: 3,
             queue_id,
             message_id: 0
         }
@@ -219,7 +228,8 @@ impl CommandWrapper {
     fn command(&self) -> Option<Command> {
         match self.command_id {
             1 => Some(Command::Acknowledge(self.queue_id, self.message_id)),
-            2 => Some(Command::StopConsume(self.queue_id)),
+            2 => Some(Command::NegativeAcknowledge(self.queue_id, self.message_id)),
+            3 => Some(Command::StopConsume(self.queue_id)),
             _ => None
         }
     }

@@ -226,6 +226,11 @@ impl Producer {
                                 queue.acknowledge(client_id, message_id).await;
                             }
                         }
+                        Command::NegativeAcknowledge(queue_id, message_id) => {
+                            if let Some(queue) = self.exchange.lock().await.get_queue_by_id(queue_id) {
+                                queue.negative_acknowledge(client_id, message_id).await;
+                            }
+                        }
                         Command::StopConsume(queue_id) => {
                             if let Some(queue) = self.exchange.lock().await.get_queue_by_id(queue_id) {
                                 if queue.remove_client(client_id).await {
