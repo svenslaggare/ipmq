@@ -7,7 +7,7 @@ edition = "2018"
 [features]
 default = []
 python_wrapper = ["pyo3"]
-c_wrapper = []
+c_wrapper = ["cbindgen"]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -26,4 +26,4 @@ crate-type = ["rlib", "cdylib"]
 opencv = "0.53"
 
 [build-dependencies]
-cbindgen = "0.19.0"
+cbindgen = { version = "0.19.0", optional = true }

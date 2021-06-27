@@ -5,7 +5,7 @@
 #include <cstring>
 
 #include <ipmq.h>
-#include "cpp/ipmq.h"
+#include "cpp/ipmq.hpp"
 
 int main(int argc, const char* argv[]) {
 	std::string command = "consumer";
