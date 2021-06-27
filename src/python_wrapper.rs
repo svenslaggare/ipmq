@@ -10,7 +10,7 @@ use pyo3::{PyBufferProtocol};
 use pyo3::ffi::{Py_buffer, Py_INCREF};
 use pyo3::AsPyPointer;
 
-use crate::consumer::{Consumer};
+use crate::consumer::{Consumer, HandleMessageError};
 use crate::producer::Producer;
 use crate::shared_memory::{SharedMemory, SharedMemoryAllocator, SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation};
 use crate::exchange::QueueId;
@@ -168,7 +168,7 @@ impl ConsumerWrapper {
         self.tokio_runtime.block_on(self.consumer.start_consume_queue(name))
             .map_err(|err| PyValueError::new_err(format!("{:?}", err)))?;
 
-        self.tokio_runtime.block_on(
+        let result = self.tokio_runtime.block_on(
             self.consumer.handle_messages::<_, PyErr>(|commands, shared_memory, message| {
                 let buffer = shared_memory.bytes_from_data(&message.data);
 
@@ -184,7 +184,16 @@ impl ConsumerWrapper {
 
                 Ok(())
             })
-        )
+        );
+
+        if let Some(err) = result.err() {
+            return match err {
+                HandleMessageError::CallbackError(err) => Err(err),
+                err => Err(PyValueError::new_err(format!("{:?}", err)))
+            }
+        }
+
+        Ok(())
     }
 }
 

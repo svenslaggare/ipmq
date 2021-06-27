@@ -19,7 +19,16 @@ impl From<tokio::io::Error> for ConsumerError {
     }
 }
 
-pub type ConsumeResult<T> = Result<T, ConsumerError>;
+pub type ConsumerResult<T> = Result<T, ConsumerError>;
+
+#[derive(Debug)]
+pub enum HandleMessageError<T> {
+    CallbackError(T),
+    IO(tokio::io::Error),
+    FailedToStartConsume,
+    FailedCreatingSharedMemory(SharedMemoryError),
+    ReceivedMessageWithoutSharedMemory
+}
 
 /// Represents a consumer of messages
 pub struct Consumer {
@@ -29,7 +38,7 @@ pub struct Consumer {
 
 impl Consumer {
     /// Tries to connect to the producer at the given path
-    pub async fn connect(path: &Path) -> ConsumeResult<Consumer> {
+    pub async fn connect(path: &Path) -> ConsumerResult<Consumer> {
         let mut stream = UnixStream::connect(path).await?;
 
         let response = Command::receive_command(&mut stream).await?;
@@ -52,13 +61,13 @@ impl Consumer {
     }
 
     /// Sends a command to create a new queue in the message queue
-    pub async fn create_queue(&mut self, name: &str, auto_delete: bool, ttl: Option<f64>) -> ConsumeResult<()> {
+    pub async fn create_queue(&mut self, name: &str, auto_delete: bool, ttl: Option<f64>) -> ConsumerResult<()> {
         Command::CreateQueue { name: name.to_owned(), auto_delete, ttl }.send_command(&mut self.stream).await?;
         Ok(())
     }
 
     /// Sends a command to bind the given queue to the given pattern
-    pub async fn bind_queue(&mut self, name: &str, pattern: &str) -> ConsumeResult<()> {
+    pub async fn bind_queue(&mut self, name: &str, pattern: &str) -> ConsumerResult<()> {
         Command::BindQueue(name.to_owned(), pattern.to_owned()).send_command(&mut self.stream).await?;
         let response = Command::receive_command(&mut self.stream).await?;
         match response {
@@ -74,14 +83,15 @@ impl Consumer {
     }
 
     /// Sends a command to start consuming from the given queue
-    pub async fn start_consume_queue(&mut self, name: &str) -> ConsumeResult<()> {
+    pub async fn start_consume_queue(&mut self, name: &str) -> ConsumerResult<()> {
         Command::StartConsume(name.to_owned()).send_command(&mut self.stream).await?;
         Ok(())
     }
 
     /// Handles messages from the queue using the given callback.
     /// Commands can be sent back to the producer (typically ack) using the first argument to the callback.
-    pub async fn handle_messages<F: FnMut(&mut Vec<Command>, &SharedMemory, Message) -> Result<(), E>, E>(&mut self, mut on_message: F) -> Result<(), E> {
+    pub async fn handle_messages<F, E>(&mut self, mut on_message: F) -> Result<(), HandleMessageError<E>>
+        where F : FnMut(&mut Vec<Command>, &SharedMemory, Message) -> Result<(), E> {
         loop {
             match Command::receive_command(&mut self.stream).await {
                 Ok(command) => {
@@ -92,15 +102,15 @@ impl Consumer {
                                     self.shared_memory = Some(shared_memory);
                                 }
                                 Err(err) => {
-                                    println!("Failed to create shared memory: {:?}", err);
-                                    break;
+                                    return Err(HandleMessageError::FailedCreatingSharedMemory(err));
                                 }
                             }
                         }
                         Command::Message(message) => {
                             if let Some(shared_memory) = self.shared_memory.as_mut() {
                                 let mut commands = Vec::new();
-                                on_message(&mut commands, shared_memory, message)?;
+                                on_message(&mut commands, shared_memory, message)
+                                    .map_err(|err| HandleMessageError::CallbackError(err))?;
 
                                 for new_command in commands {
                                     if new_command.send_command(&mut self.stream).await.is_err() {
@@ -108,22 +118,22 @@ impl Consumer {
                                     }
                                 }
                             } else {
-                                println!("Received message without shared memory.");
+                                return Err(HandleMessageError::ReceivedMessageWithoutSharedMemory);
                             }
-                        }
-                        Command::FailedToStartConsume => {
-                            break;
                         }
                         Command::StoppedConsuming => {
                             break;
+                        }
+                        Command::FailedToStartConsume => {
+                            return Err(HandleMessageError::FailedToStartConsume);
                         }
                         _ => {
                             println!("Unhandled command: {:?}", command);
                         }
                     }
                 }
-                Err(_) => {
-                    break;
+                Err(err) => {
+                   return Err(HandleMessageError::IO(err));
                 }
             }
         }
