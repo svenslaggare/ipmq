@@ -225,26 +225,20 @@ impl Producer {
                                 Some("Queue not found.".to_owned())
                             };
 
-                            if let Some(client) = self.clients.lock().await.get(&client_id) {
-                                if client.sender.send(Command::BindQueueResult(result)).is_err() {
-                                    break;
-                                }
+                            if !self.send_command(client_id, Command::BindQueueResult(result)).await {
+                                break;
                             }
                         }
                         Command::StartConsume(queue_name) => {
                             if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
-                                if let Some(client) = self.clients.lock().await.get(&client_id) {
-                                    if client.sender.send(Command::StartConsumeResult(None)).is_err() {
-                                        break;
-                                    }
+                                if !self.send_command(client_id, Command::StartConsumeResult(None)).await {
+                                    break;
                                 }
 
                                 queue.add_client(client_id).await;
                             } else {
-                                if let Some(client) = self.clients.lock().await.get(&client_id) {
-                                    if client.sender.send(Command::StartConsumeResult(Some("Queue does not exist.".to_owned()))).is_err() {
-                                        break;
-                                    }
+                                if !self.send_command(client_id, Command::StartConsumeResult(Some("Queue does not exist.".to_owned()))).await {
+                                    break;
                                 }
                             }
                         }
@@ -261,10 +255,8 @@ impl Producer {
                         Command::StopConsume(queue_id) => {
                             if let Some(queue) = self.exchange.lock().await.get_queue_by_id(queue_id) {
                                 if queue.remove_client(client_id).await {
-                                    if let Some(client) = self.clients.lock().await.get(&client_id) {
-                                        if client.sender.send(Command::StoppedConsuming).is_err() {
-                                           break;
-                                        }
+                                    if !self.send_command(client_id, Command::StoppedConsuming).await {
+                                        break;
                                     }
                                 }
                             }
@@ -279,6 +271,14 @@ impl Producer {
         }
 
         self.remove_client(client_id).await;
+    }
+
+    async fn send_command(&self, client_id: ClientId, command: Command) -> bool {
+        if let Some(client) = self.clients.lock().await.get(&client_id) {
+            client.sender.send(command).is_ok()
+        } else {
+            false
+        }
     }
 
     /// Tries to consume from the given queue
