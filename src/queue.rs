@@ -277,6 +277,6 @@ fn test_remove_oldest2() {
     assert!(queue.acknowledge(1, id2));
     assert!(queue.remove_oldest());
 
-    assert_eq!(None, queue.queue_data.get(&id1));
-    assert_eq!(Some(&3), queue.queue_data.get(&id3));
+    assert_eq!(None, queue.queue_data.get(&id1).map(|x| &x.value));
+    assert_eq!(Some(&3), queue.queue_data.get(&id3).map(|x| &x.value));
 }
