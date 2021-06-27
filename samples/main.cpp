@@ -14,11 +14,11 @@ int main(int argc, const char* argv[]) {
 	}
 
 	if (command == "consumer") {
-		auto consumer = ipmq_consumer_create("../test.queue");
+		auto consumer = ipmq_consumer_create("../test.queue", nullptr, 0);
 
 		if (consumer != nullptr) {
-			ipmq_consumer_create_queue(consumer, "test", true, -1.0);
-			ipmq_consumer_bind_queue(consumer, "test", ".*");
+			ipmq_consumer_create_queue(consumer, "test", true, -1.0, nullptr, 0);
+			ipmq_consumer_bind_queue(consumer, "test", ".*", nullptr, 0);
 
 			ipmq_consumer_start_consume_queue(
 				consumer,
@@ -32,7 +32,8 @@ int main(int argc, const char* argv[]) {
 						ipmq_consumer_add_stop_consume_command(commands, queueId);
 					}
 				},
-				nullptr
+				nullptr,
+				nullptr, 0
 			);
 
 			ipmq_consumer_destroy(consumer);
@@ -61,7 +62,7 @@ int main(int argc, const char* argv[]) {
 	}
 
 	if (command == "producer") {
-		auto producer = ipmq_producer_create("../test.queue", "/dev/shm/test.data", 2048);
+		auto producer = ipmq_producer_create("../test.queue", "/dev/shm/test.data", 2048, nullptr, 0);
 		if (producer != nullptr) {
 			int number = 1;
 			while (true) {
@@ -69,12 +70,12 @@ int main(int argc, const char* argv[]) {
 				messageStream << "Hello, World #" << number << "!";
 				std::string message = messageStream.str();
 
-//				ipmq_producer_publish_bytes(producer, "test", (unsigned char*)message.data(), message.size());
+//				ipmq_producer_publish_bytes(producer, "test", (unsigned char*)message.data(), message.size(), nullptr, 0);
 
-				auto allocation = ipmq_producer_allocate(producer, message.size());
+				auto allocation = ipmq_producer_allocate(producer, message.size(), nullptr, 0);
 				auto allocation_ptr = ipmq_producer_allocation_get_ptr(allocation);
 				std::memcpy(allocation_ptr, (std::uint8_t*)message.data(), message.size());
-				ipmq_producer_publish(producer, "test", allocation);
+				ipmq_producer_publish(producer, "test", allocation, nullptr, 0);
 				ipmq_producer_return_allocation(allocation);
 
 				std::this_thread::sleep_for(std::chrono::milliseconds(200));

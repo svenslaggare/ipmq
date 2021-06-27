@@ -5,7 +5,7 @@ use std::ffi::{CStr, CString, c_void};
 
 use tokio::runtime::Runtime;
 
-use crate::consumer::Consumer as ConsumerImpl;
+use crate::consumer::{Consumer as ConsumerImpl};
 use crate::producer::Producer as ProducerImpl;
 use crate::shared_memory::{SmartSharedMemoryAllocator, SharedMemory, SharedMemoryAllocator, GenericMemoryAllocation, SmartMemoryAllocation};
 use crate::command::Command;
@@ -18,19 +18,27 @@ pub struct IPMQConsumer {
 }
 
 #[no_mangle]
-pub extern fn ipmq_consumer_create(path_ptr: *const c_char) -> *mut IPMQConsumer {
+pub extern fn ipmq_consumer_create(path_ptr: *const c_char,
+                                   error_msg_ptr: *mut c_char, error_msg_max_length: usize) -> *mut IPMQConsumer {
     let path = unsafe { CStr::from_ptr(path_ptr).to_str().unwrap() };
 
     let tokio_runtime = Runtime::new().unwrap();
-    if let Ok(consumer) = tokio_runtime.block_on(ConsumerImpl::connect(Path::new(path))) {
-        heap_allocate(
-            IPMQConsumer {
-                tokio_runtime,
-                consumer
+    match tokio_runtime.block_on(ConsumerImpl::connect(Path::new(path))) {
+        Ok(consumer) => {
+            heap_allocate(
+                IPMQConsumer {
+                    tokio_runtime,
+                    consumer
+                }
+            )
+        }
+        Err(err) => {
+            if error_msg_ptr != std::ptr::null_mut() {
+                copy_str(format!("{:?}", err), error_msg_ptr, error_msg_max_length);
             }
-        )
-    } else {
-        std::ptr::null_mut()
+
+            std::ptr::null_mut()
+        }
     }
 }
 
@@ -42,26 +50,40 @@ pub extern fn ipmq_consumer_destroy(consumer_ptr: *mut IPMQConsumer) {
 }
 
 #[no_mangle]
-pub extern fn ipmq_consumer_create_queue(consumer: &mut IPMQConsumer, name_ptr: *const c_char, auto_delete: bool, ttl: f64) -> i32 {
+pub extern fn ipmq_consumer_create_queue(consumer: &mut IPMQConsumer,
+                                         name_ptr: *const c_char, auto_delete: bool, ttl: f64,
+                                         error_msg_ptr: *mut c_char, error_msg_max_length: usize) -> i32 {
     let ttl = if ttl >= 0.0 {Some(ttl)} else {None};
     let name = unsafe { CStr::from_ptr(name_ptr).to_str().unwrap() };
 
-    if let Err(_) = consumer.tokio_runtime.block_on(consumer.consumer.create_queue(name, auto_delete, ttl)) {
-        -1
-    } else {
-        0
+    match consumer.tokio_runtime.block_on(consumer.consumer.create_queue(name, auto_delete, ttl)) {
+        Ok(()) => 0,
+        Err(err) => {
+            if error_msg_ptr != std::ptr::null_mut() {
+                copy_str(format!("{:?}", err), error_msg_ptr, error_msg_max_length);
+            }
+
+            -1
+        }
     }
 }
 
 #[no_mangle]
-pub extern fn ipmq_consumer_bind_queue(consumer: &mut IPMQConsumer, name_ptr: *const c_char, pattern_ptr: *const c_char) -> i32 {
+pub extern fn ipmq_consumer_bind_queue(consumer: &mut IPMQConsumer,
+                                       name_ptr: *const c_char, pattern_ptr: *const c_char,
+                                       error_msg_ptr: *mut c_char, error_msg_max_length: usize) -> i32 {
     let name = unsafe { CStr::from_ptr(name_ptr).to_str().unwrap() };
     let pattern = unsafe { CStr::from_ptr(pattern_ptr).to_str().unwrap() };
 
-    if let Err(_) = consumer.tokio_runtime.block_on(consumer.consumer.bind_queue(name, pattern)) {
-        -1
-    } else {
-        0
+    match consumer.tokio_runtime.block_on(consumer.consumer.bind_queue(name, pattern)) {
+        Ok(()) => 0,
+        Err(err) => {
+            if error_msg_ptr != std::ptr::null_mut() {
+                copy_str(format!("{:?}", err), error_msg_ptr, error_msg_max_length);
+            }
+
+            -1
+        }
     }
 }
 
@@ -71,10 +93,15 @@ pub struct IPMQCommands<'a>(&'a mut Vec<Command>);
 pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut IPMQConsumer,
                                                 name_ptr: *const c_char,
                                                 callback: extern fn(*mut IPMQCommands, u64, *const c_char, u64, *const u8, usize, *mut c_void),
-                                                user_ptr: *mut c_void) -> i32 {
+                                                user_ptr: *mut c_void,
+                                                error_msg_ptr: *mut c_char, error_msg_max_length: usize) -> i32 {
     let name = unsafe { CStr::from_ptr(name_ptr).to_str().unwrap() };
 
-    if let Err(_) = consumer.tokio_runtime.block_on(consumer.consumer.start_consume_queue(name)) {
+    if let Err(err) = consumer.tokio_runtime.block_on(consumer.consumer.start_consume_queue(name)) {
+        if error_msg_ptr != std::ptr::null_mut() {
+            copy_str(format!("{:?}", err), error_msg_ptr, error_msg_max_length);
+        }
+
         return -1;
     }
 
@@ -98,7 +125,15 @@ pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut IPMQConsumer,
         })
     );
 
-    if result.is_ok() {0} else {-1}
+    if result.is_ok() {
+        0
+    } else {
+        if error_msg_ptr != std::ptr::null_mut() {
+            copy_str("Failed to consume messages.".to_owned(), error_msg_ptr, error_msg_max_length);
+        }
+
+        -1
+    }
 }
 
 #[no_mangle]
@@ -125,17 +160,23 @@ pub struct IPMQProducer {
 #[no_mangle]
 pub extern fn ipmq_producer_create(path_ptr: *const c_char,
                                    shared_memory_path_ptr: *const c_char,
-                                   shared_memory_size: usize) -> *mut IPMQProducer {
+                                   shared_memory_size: usize,
+                                   error_msg_ptr: *mut c_char, error_msg_max_length: usize) -> *mut IPMQProducer {
     let path = unsafe { CStr::from_ptr(path_ptr).to_str().unwrap() };
     let shared_memory_path = unsafe { CStr::from_ptr(shared_memory_path_ptr).to_str().unwrap() };
 
     let tokio_runtime = Arc::new(Runtime::new().unwrap());
 
-    let shared_memory = SharedMemory::write(Path::new(shared_memory_path), shared_memory_size);
-    if shared_memory.is_err() {
-        return std::ptr::null_mut();
-    }
-    let shared_memory = shared_memory.unwrap();
+    let shared_memory = match SharedMemory::write(Path::new(shared_memory_path), shared_memory_size) {
+        Ok(shared_memory) => shared_memory,
+        Err(err) => {
+            if error_msg_ptr != std::ptr::null_mut() {
+                copy_str(format!("{:?}", err), error_msg_ptr, error_msg_max_length);
+            }
+
+            return std::ptr::null_mut();
+        }
+    };
 
     let producer = ProducerImpl::new(Path::new(path), &shared_memory);
     let shared_memory_allocator = SharedMemoryAllocator::new_smart(shared_memory);
@@ -172,12 +213,19 @@ pub struct IPMQMemoryAllocation {
 }
 
 #[no_mangle]
-pub extern fn ipmq_producer_allocate(producer: &IPMQProducer, size: usize) -> *mut IPMQMemoryAllocation {
-    let allocation = producer.tokio_runtime.block_on(producer.producer.allocate(&producer.shared_memory_allocator, size));
-    if allocation.is_none() {
-        return std::ptr::null_mut();
-    }
-    let allocation = allocation.unwrap();
+pub extern fn ipmq_producer_allocate(producer: &IPMQProducer,
+                                     size: usize,
+                                     error_msg_ptr: *mut c_char, error_msg_max_length: usize) -> *mut IPMQMemoryAllocation {
+    let allocation = match producer.tokio_runtime.block_on(producer.producer.allocate(&producer.shared_memory_allocator, size)) {
+        Some(allocation) => allocation,
+        None => {
+            if error_msg_ptr != std::ptr::null_mut() {
+                copy_str(format!("Failed to allocate shared memory."), error_msg_ptr, error_msg_max_length);
+            }
+
+            return std::ptr::null_mut();
+        }
+    };
 
     heap_allocate(
         IPMQMemoryAllocation {
@@ -199,14 +247,21 @@ pub extern fn ipmq_producer_return_allocation(allocation_ptr: *mut IPMQMemoryAll
 }
 
 #[no_mangle]
-pub extern fn ipmq_producer_publish_bytes(producer: &IPMQProducer, routing_key_ptr: *const c_char, message_ptr: *const u8, message_size: usize) -> i32 {
+pub extern fn ipmq_producer_publish_bytes(producer: &IPMQProducer,
+                                          routing_key_ptr: *const c_char, message_ptr: *const u8, message_size: usize,
+                                          error_msg_ptr: *mut c_char, error_msg_max_length: usize) -> i32 {
     let routing_key = unsafe { CStr::from_ptr(routing_key_ptr).to_str().unwrap() };
 
-    let allocation = producer.tokio_runtime.block_on(producer.producer.allocate(&producer.shared_memory_allocator, message_size));
-    if allocation.is_none() {
-        return -1;
-    }
-    let allocation = allocation.unwrap();
+    let allocation = match producer.tokio_runtime.block_on(producer.producer.allocate(&producer.shared_memory_allocator, message_size)) {
+        Some(allocation) => allocation,
+        None => {
+            if error_msg_ptr != std::ptr::null_mut() {
+                copy_str(format!("Failed to allocate shared memory."), error_msg_ptr, error_msg_max_length);
+            }
+
+            return -1;
+        }
+    };
 
     let message = unsafe { std::slice::from_raw_parts(message_ptr, message_size) };
     allocation.bytes_mut().copy_from_slice(message);
@@ -216,14 +271,28 @@ pub extern fn ipmq_producer_publish_bytes(producer: &IPMQProducer, routing_key_p
 }
 
 #[no_mangle]
-pub extern fn ipmq_producer_publish(producer: &IPMQProducer, routing_key_ptr: *const c_char, allocation: &IPMQMemoryAllocation) -> i32 {
+pub extern fn ipmq_producer_publish(producer: &IPMQProducer,
+                                    routing_key_ptr: *const c_char, allocation: &IPMQMemoryAllocation,
+                                    _error_msg_ptr: *mut c_char, _error_msg_max_length: usize) -> i32 {
     let routing_key = unsafe { CStr::from_ptr(routing_key_ptr).to_str().unwrap() };
 
     producer.tokio_runtime.block_on(producer.producer.publish(routing_key, allocation.allocation.clone()));
     0
 }
 
-
 fn heap_allocate<T>(x: T) -> *mut T {
     Box::leak(Box::new(x)) as *mut _
+}
+
+fn copy_str(str: String, destination_ptr: *mut c_char, destination_max_length: usize) {
+    let str = str.into_bytes();
+    let length = str.len().min(destination_max_length - 1);
+
+    unsafe {
+        for i in 0..length {
+            *destination_ptr.offset(i as isize) = str[i] as i8;
+        }
+
+        *destination_ptr.offset(length as isize) = 0;
+    }
 }

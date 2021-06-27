@@ -187,6 +187,11 @@ impl Producer {
         (client_id, client_receiver)
     }
 
+    async fn remove_client(&self, client_id: ClientId) {
+        self.exchange.lock().await.remove_client(client_id).await;
+        self.clients.lock().await.remove(&client_id);
+    }
+
     /// Handles sending commands to the given client
     async fn handle_send_commands(&self,
                                   client_id: ClientId,
@@ -210,7 +215,7 @@ impl Producer {
                             self.create_queue(&name, ExchangeQueueOptions { auto_delete, ttl }).await;
                         }
                         Command::BindQueue(queue_name, pattern) => {
-                            let command = if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
+                            let result = if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
                                 if let Err(err) = queue.add_binding(&pattern).await {
                                     Some(format!("Invalid bind pattern: {:?}", err))
                                 } else {
@@ -221,7 +226,7 @@ impl Producer {
                             };
 
                             if let Some(client) = self.clients.lock().await.get(&client_id) {
-                                if client.sender.send(Command::BindQueueResult(command)).is_err() {
+                                if client.sender.send(Command::BindQueueResult(result)).is_err() {
                                     break;
                                 }
                             }
@@ -293,10 +298,5 @@ impl Producer {
                 break;
             }
         }
-    }
-
-    async fn remove_client(&self, client_id: ClientId) {
-        self.exchange.lock().await.remove_client(client_id).await;
-        self.clients.lock().await.remove(&client_id);
     }
 }
