@@ -233,10 +233,16 @@ impl Producer {
                         }
                         Command::StartConsume(queue_name) => {
                             if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
+                                if let Some(client) = self.clients.lock().await.get(&client_id) {
+                                    if client.sender.send(Command::StartConsumeResult(None)).is_err() {
+                                        break;
+                                    }
+                                }
+
                                 queue.add_client(client_id).await;
                             } else {
                                 if let Some(client) = self.clients.lock().await.get(&client_id) {
-                                    if client.sender.send(Command::FailedToStartConsume).is_err() {
+                                    if client.sender.send(Command::StartConsumeResult(Some("Queue does not exist.".to_owned()))).is_err() {
                                         break;
                                     }
                                 }

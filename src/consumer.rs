@@ -25,7 +25,7 @@ pub type ConsumerResult<T> = Result<T, ConsumerError>;
 pub enum HandleMessageError<T> {
     CallbackError(T),
     IO(tokio::io::Error),
-    FailedToStartConsume,
+    FailedToStartConsume(String),
     FailedCreatingSharedMemory(SharedMemoryError),
     ReceivedMessageWithoutSharedMemory
 }
@@ -96,6 +96,11 @@ impl Consumer {
             match Command::receive_command(&mut self.stream).await {
                 Ok(command) => {
                     match command {
+                        Command::StartConsumeResult(err) => {
+                            if let Some(err) = err {
+                                return Err(HandleMessageError::FailedToStartConsume(err));
+                            }
+                        }
                         Command::SharedMemoryArea(path, size) => {
                             match SharedMemory::read(Path::new(&path), size) {
                                 Ok(shared_memory) => {
@@ -123,9 +128,6 @@ impl Consumer {
                         }
                         Command::StoppedConsuming => {
                             break;
-                        }
-                        Command::FailedToStartConsume => {
-                            return Err(HandleMessageError::FailedToStartConsume);
                         }
                         _ => {
                             println!("Unhandled command: {:?}", command);

@@ -12,7 +12,7 @@ pub enum Command {
     BindQueue(String, String),
     BindQueueResult(Option<String>),
     StartConsume(String),
-    FailedToStartConsume,
+    StartConsumeResult(Option<String>),
     SharedMemoryArea(String, usize),
     Message(Message),
     Acknowledge(QueueId, MessageId),
