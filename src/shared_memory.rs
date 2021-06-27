@@ -286,10 +286,6 @@ impl SharedMemory {
         &self.bytes()[data.offset..(data.offset + data.size)]
     }
 
-    pub fn bytes_mut_from_data(&mut self, data: &MessageData) -> &mut [u8] {
-        &mut self.bytes_mut()[data.offset..(data.offset + data.size)]
-    }
-
     pub fn bytes(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(self.address as *const u8, self.size)

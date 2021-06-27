@@ -81,7 +81,7 @@ impl Consumer {
 
     /// Handles messages from the queue using the given callback.
     /// Commands can be sent back to the producer (typically ack) using the first argument to the callback.
-    pub async fn handle_messages<F: FnMut(&mut Vec<Command>, &mut SharedMemory, Message) -> Result<(), E>, E>(&mut self, mut on_message: F) -> Result<(), E> {
+    pub async fn handle_messages<F: FnMut(&mut Vec<Command>, &SharedMemory, Message) -> Result<(), E>, E>(&mut self, mut on_message: F) -> Result<(), E> {
         loop {
             match Command::receive_command(&mut self.stream).await {
                 Ok(command) => {

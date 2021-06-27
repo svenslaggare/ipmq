@@ -109,19 +109,22 @@ async fn main_consumer(queue: Option<String>) {
 
     consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
         let metadata_size = std::mem::size_of::<CameraMetadata>();
-        let buffer = shared_memory.bytes_mut_from_data(&message.data);
+        let buffer = shared_memory.bytes_from_data(&message.data);
         let frame_metadata = unsafe { std::ptr::read(buffer[..metadata_size].as_ptr() as *const CameraMetadata) };
 
-        println!("Got: {}, {}x{}", message.id, frame_metadata.width, frame_metadata.height);
         let frame = unsafe {
             Mat::new_size_with_data(
                 Size2i::new(frame_metadata.width, frame_metadata.height),
                 frame_metadata.typ,
-                (&mut buffer[metadata_size..]).as_mut_ptr() as *mut _,
+                (&buffer[metadata_size..]).as_ptr() as *const _ as *mut _,
                 opencv::core::Mat_AUTO_STEP
             ).unwrap()
         };
-        opencv::highgui::imshow(format!("Queue: {}", queue).as_str(), &frame).unwrap();
+
+        opencv::highgui::imshow(
+            format!("Queue: {},  {}x{}", queue, frame_metadata.width, frame_metadata.height).as_str(),
+            &frame
+        ).unwrap();
         opencv::highgui::wait_key(1).unwrap();
 
         commands.push(message.acknowledgement());
