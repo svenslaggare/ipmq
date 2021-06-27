@@ -5,8 +5,8 @@ use std::ffi::{CStr, CString, c_void};
 
 use tokio::runtime::Runtime;
 
-use crate::consumer::{Consumer as ConsumerImpl};
-use crate::producer::Producer as ProducerImpl;
+use crate::consumer::Consumer;
+use crate::producer::Producer;
 use crate::shared_memory::{SmartSharedMemoryAllocator, SharedMemory, SharedMemoryAllocator, GenericMemoryAllocation, SmartMemoryAllocation};
 use crate::command::Command;
 use crate::exchange::QueueId;
@@ -14,7 +14,7 @@ use crate::queue::MessageId;
 
 pub struct IPMQConsumer {
     tokio_runtime: Runtime,
-    consumer: ConsumerImpl
+    consumer: Consumer
 }
 
 #[no_mangle]
@@ -23,7 +23,7 @@ pub extern fn ipmq_consumer_create(path_ptr: *const c_char,
     let path = unsafe { CStr::from_ptr(path_ptr).to_str().unwrap() };
 
     let tokio_runtime = Runtime::new().unwrap();
-    match tokio_runtime.block_on(ConsumerImpl::connect(Path::new(path))) {
+    match tokio_runtime.block_on(Consumer::connect(Path::new(path))) {
         Ok(consumer) => {
             heap_allocate(
                 IPMQConsumer {
@@ -153,7 +153,7 @@ pub extern fn ipmq_consumer_add_stop_consume_command(commands: &mut IPMQCommands
 
 pub struct IPMQProducer {
     tokio_runtime: Arc<Runtime>,
-    producer: Arc<ProducerImpl>,
+    producer: Arc<Producer>,
     shared_memory_allocator: SmartSharedMemoryAllocator
 }
 
@@ -178,7 +178,7 @@ pub extern fn ipmq_producer_create(path_ptr: *const c_char,
         }
     };
 
-    let producer = ProducerImpl::new(Path::new(path), &shared_memory);
+    let producer = Producer::new(Path::new(path), &shared_memory);
     let shared_memory_allocator = SharedMemoryAllocator::new_smart(shared_memory);
 
     let tokio_runtime_clone = tokio_runtime.clone();
