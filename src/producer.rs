@@ -14,7 +14,7 @@ use tokio::time::Duration;
 use crate::queue::{Queue, ClientId};
 use crate::command::{Command, Message};
 use crate::exchange::{Exchange, QueueId, ExchangeQueue, ExchangeQueueOptions, QueueMessage, QueueMessageData};
-use crate::shared_memory::{SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation, SharedMemory};
+use crate::shared_memory::{SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation, SharedMemory, SharedMemoryAllocator};
 
 pub struct ProducerClient {
     pub sender: UnboundedSender<Command>,
@@ -27,12 +27,13 @@ pub struct Producer {
     clients: Mutex<HashMap<ClientId, ProducerClient>>,
     exchange: Mutex<Exchange>,
     shared_memory_spec: (PathBuf, usize),
+    shared_memory_allocator: SmartSharedMemoryAllocator,
     stop_notify: Notify
 }
 
 impl Producer {
     /// Creates a new producer at the given path using the given existing shared memory file
-    pub fn new(path: &Path, shared_memory: &SharedMemory) -> Arc<Producer> {
+    pub fn new(path: &Path, shared_memory: SharedMemory) -> Arc<Producer> {
         Arc::new(
             Producer {
                 path: path.to_owned(),
@@ -40,6 +41,7 @@ impl Producer {
                 clients: Mutex::new(HashMap::new()),
                 exchange: Mutex::new(Exchange::new()),
                 shared_memory_spec: (shared_memory.path().to_owned(), shared_memory.size()),
+                shared_memory_allocator: SharedMemoryAllocator::new_smart(shared_memory),
                 stop_notify: Notify::new()
             }
         )
@@ -111,11 +113,9 @@ impl Producer {
         queue
     }
 
-    /// Tries to allocate memory from the given shared memory area
-    pub async fn allocate(&self,
-                          shared_memory_allocator: &SmartSharedMemoryAllocator,
-                          size: usize) -> Option<Arc<SmartMemoryAllocation>> {
-        let allocate = || SmartMemoryAllocation::new(shared_memory_allocator, size);
+    /// Tries to allocate memory from the shared memory area
+    pub async fn allocate(&self, size: usize) -> Option<Arc<SmartMemoryAllocation>> {
+        let allocate = || SmartMemoryAllocation::new(&self.shared_memory_allocator, size);
 
         if let Some(allocation) = allocate() {
             Some(allocation)

@@ -28,13 +28,10 @@ async fn main_producer() {
     println!("producer");
 
     let shared_memory = SharedMemory::write(Path::new("/dev/shm/test.data"), 2048).unwrap();
-
-    let producer = Producer::new(Path::new("test.queue"), &shared_memory);
+    let producer = Producer::new(Path::new("test.queue"), shared_memory);
 
     let producer_clone = producer.clone();
     tokio::spawn(async move {
-        let shared_memory_allocator = SharedMemoryAllocator::new_smart(shared_memory);
-
         let mut interval = time::interval(Duration::from_millis(250));
         let mut number = 1;
 
@@ -43,7 +40,7 @@ async fn main_producer() {
 
             let tmp_buffer = format!("Hello, World #{:04}!", number).into_bytes();
             let allocation = {
-                let allocation = producer_clone.allocate(&shared_memory_allocator, tmp_buffer.len()).await.unwrap();
+                let allocation = producer_clone.allocate(tmp_buffer.len()).await.unwrap();
                 allocation.bytes_mut().copy_from_slice(&tmp_buffer);
                 allocation
             };

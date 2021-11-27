@@ -7,7 +7,7 @@ use tokio::runtime::Runtime;
 
 use crate::consumer::Consumer;
 use crate::producer::Producer;
-use crate::shared_memory::{SmartSharedMemoryAllocator, SharedMemory, SharedMemoryAllocator, GenericMemoryAllocation, SmartMemoryAllocation};
+use crate::shared_memory::{SharedMemory, GenericMemoryAllocation, SmartMemoryAllocation};
 use crate::command::Command;
 use crate::exchange::QueueId;
 use crate::queue::MessageId;
@@ -153,8 +153,7 @@ pub extern fn ipmq_consumer_add_stop_consume_command(commands: &mut IPMQCommands
 
 pub struct IPMQProducer {
     tokio_runtime: Arc<Runtime>,
-    producer: Arc<Producer>,
-    shared_memory_allocator: SmartSharedMemoryAllocator
+    producer: Arc<Producer>
 }
 
 #[no_mangle]
@@ -178,8 +177,7 @@ pub extern fn ipmq_producer_create(path_ptr: *const c_char,
         }
     };
 
-    let producer = Producer::new(Path::new(path), &shared_memory);
-    let shared_memory_allocator = SharedMemoryAllocator::new_smart(shared_memory);
+    let producer = Producer::new(Path::new(path), shared_memory);
 
     let tokio_runtime_clone = tokio_runtime.clone();
     let producer_clone = producer.clone();
@@ -190,8 +188,7 @@ pub extern fn ipmq_producer_create(path_ptr: *const c_char,
     heap_allocate(
         IPMQProducer {
             producer,
-            tokio_runtime,
-            shared_memory_allocator
+            tokio_runtime
         }
     )
 }
@@ -216,7 +213,7 @@ pub struct IPMQMemoryAllocation {
 pub extern fn ipmq_producer_allocate(producer: &IPMQProducer,
                                      size: usize,
                                      error_msg_ptr: *mut c_char, error_msg_max_length: usize) -> *mut IPMQMemoryAllocation {
-    let allocation = match producer.tokio_runtime.block_on(producer.producer.allocate(&producer.shared_memory_allocator, size)) {
+    let allocation = match producer.tokio_runtime.block_on(producer.producer.allocate(size)) {
         Some(allocation) => allocation,
         None => {
             if error_msg_ptr != std::ptr::null_mut() {
@@ -252,7 +249,7 @@ pub extern fn ipmq_producer_publish_bytes(producer: &IPMQProducer,
                                           error_msg_ptr: *mut c_char, error_msg_max_length: usize) -> i32 {
     let routing_key = unsafe { CStr::from_ptr(routing_key_ptr).to_str().unwrap() };
 
-    let allocation = match producer.tokio_runtime.block_on(producer.producer.allocate(&producer.shared_memory_allocator, message_size)) {
+    let allocation = match producer.tokio_runtime.block_on(producer.producer.allocate(message_size)) {
         Some(allocation) => allocation,
         None => {
             if error_msg_ptr != std::ptr::null_mut() {

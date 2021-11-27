@@ -53,19 +53,17 @@ async fn main_producer() {
 
     let metadata_size = std::mem::size_of::<CameraMetadata>();
     let frame_size = frame_data_size + metadata_size;
-    let shared_memory = SharedMemory::write(Path::new("/dev/shm/test.data"), frame_size * 3).unwrap();
 
-    let producer = Producer::new(Path::new("test.queue"), &shared_memory);
+    let shared_memory = SharedMemory::write(Path::new("/dev/shm/test.data"), frame_size * 3).unwrap();
+    let producer = Producer::new(Path::new("test.queue"), shared_memory);
 
     let producer_clone = producer.clone();
     tokio::spawn(async move {
-        let shared_memory_allocator = SharedMemoryAllocator::new_smart(shared_memory);
-
         let mut frame_count = 0;
         let mut last_measurement = std::time::Instant::now();
 
         loop {
-            let allocation = producer_clone.allocate(&shared_memory_allocator, frame_size).await.unwrap();
+            let allocation = producer_clone.allocate(frame_size).await.unwrap();
             let mut frame = unsafe {
                 let frame_metadata = CameraMetadata {
                     width: ref_frame.cols(),

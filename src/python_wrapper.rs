@@ -12,7 +12,7 @@ use pyo3::AsPyPointer;
 
 use crate::consumer::{Consumer, HandleMessageError};
 use crate::producer::Producer;
-use crate::shared_memory::{SharedMemory, SharedMemoryAllocator, SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation};
+use crate::shared_memory::{SharedMemory, SmartMemoryAllocation, GenericMemoryAllocation};
 use crate::exchange::QueueId;
 use crate::queue::MessageId;
 use crate::command::Command;
@@ -20,8 +20,7 @@ use crate::command::Command;
 #[pyclass(name="Producer")]
 struct ProducerWrapper {
     producer: Arc<Producer>,
-    tokio_runtime: Arc<Runtime>,
-    shared_memory_allocator: SmartSharedMemoryAllocator
+    tokio_runtime: Arc<Runtime>
 }
 
 #[pymethods]
@@ -32,9 +31,7 @@ impl ProducerWrapper {
 
         let shared_memory = SharedMemory::write(Path::new(shared_memory_path), shared_memory_size)
             .map_err(|err| PyValueError::new_err(format!("Failed to create shared memory: {:?}.", err)))?;
-
-        let producer = Producer::new(Path::new(path), &shared_memory);
-        let shared_memory_allocator = SharedMemoryAllocator::new_smart(shared_memory);
+        let producer = Producer::new(Path::new(path), shared_memory);
 
         let tokio_runtime_clone = tokio_runtime.clone();
         let producer_clone = producer.clone();
@@ -45,8 +42,7 @@ impl ProducerWrapper {
         Ok(
             ProducerWrapper {
                 producer,
-                tokio_runtime,
-                shared_memory_allocator
+                tokio_runtime
             }
         )
     }
@@ -56,7 +52,7 @@ impl ProducerWrapper {
     }
 
     fn allocate(&mut self, size: usize) -> PyResult<MemoryAllocationWrapper> {
-        let allocation = self.tokio_runtime.block_on(self.producer.allocate(&self.shared_memory_allocator, size))
+        let allocation = self.tokio_runtime.block_on(self.producer.allocate(size))
             .ok_or_else(|| PyValueError::new_err("Failed to allocate."))?;
 
         let shape = vec![allocation.size() as isize];
