@@ -9,9 +9,12 @@ use ipmq::producer::{Producer};
 use ipmq::shared_memory::{SharedMemory, SharedMemoryAllocator};
 use ipmq::shared_memory::GenericMemoryAllocation;
 use ipmq::consumer::Consumer;
+use ipmq::helpers;
 
 #[tokio::main]
 async fn main() {
+    helpers::setup_logging().unwrap();
+
     let mut arguments = std::env::args().collect::<Vec<_>>();
     let mode = arguments.remove(1);
 

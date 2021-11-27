@@ -5,6 +5,7 @@ use std::ffi::{c_void, CString};
 use tokio::runtime::Runtime;
 
 use pyo3::prelude::*;
+use pyo3::wrap_pyfunction;
 use pyo3::exceptions::PyValueError;
 use pyo3::{PyBufferProtocol};
 use pyo3::ffi::{Py_buffer, Py_INCREF};
@@ -16,6 +17,12 @@ use crate::shared_memory::{SharedMemory, SmartMemoryAllocation, GenericMemoryAll
 use crate::exchange::QueueId;
 use crate::queue::MessageId;
 use crate::command::Command;
+use crate::helpers;
+
+#[pyfunction]
+fn enable_logging() -> PyResult<()> {
+    helpers::setup_logging().map_err(|err| PyValueError::new_err(format!("Failed to create shared memory: {:?}.", err)))
+}
 
 #[pyclass(name="Producer")]
 struct ProducerWrapper {
@@ -216,6 +223,7 @@ impl CommandsWrapper {
 
 #[pymodule]
 fn libipmq(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_wrapped(wrap_pyfunction!(enable_logging))?;
     m.add_class::<ProducerWrapper>()?;
     m.add_class::<MemoryAllocationWrapper>()?;
     m.add_class::<ConsumerWrapper>()?;

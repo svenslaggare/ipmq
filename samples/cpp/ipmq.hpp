@@ -4,6 +4,8 @@
 #include <ipmq.h>
 
 namespace ipmq {
+	void enableLogging();
+
 	class Commands {
 	private:
 		IPMQCommands* mCommands;

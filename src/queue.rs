@@ -1,5 +1,7 @@
 use std::collections::{VecDeque, BTreeSet, BTreeMap, HashMap};
 
+use log::info;
+
 pub type ClientId = u64;
 pub type MessageId = u64;
 
@@ -95,7 +97,7 @@ impl<T> Queue<T> {
     /// Removes the oldest message from the queue (including unacknowledged)
     pub fn remove_oldest(&mut self) -> bool {
         let remove_unacknowledged = |self_ref: &mut Self, message_id| {
-            println!("Removed: {} (full)", message_id);
+            info!("Removed: {} (full)", message_id);
             for unacknowledged in self_ref.unacknowledged.values_mut() {
                 unacknowledged.remove(&message_id);
             }
@@ -104,7 +106,7 @@ impl<T> Queue<T> {
         };
 
         let remove_queued = |self_ref: &mut Self, message_id| {
-            println!("Removed: {} (full)", message_id);
+            info!("Removed: {} (full)", message_id);
             self_ref.queue.remove(0);
             self_ref.queue_data.remove(&message_id);
         };
@@ -167,7 +169,7 @@ impl<T> Queue<T> {
         tmp_queue.retain(|message_id| {
             if get_duration(&self.queue_data, *message_id) >= max_alive {
                 self.queue_data.remove(message_id);
-                println!("Removed (TTL): {}", message_id);
+                info!("Removed (TTL): {}", message_id);
                 any_removed = true;
                 false
             } else {
@@ -181,7 +183,7 @@ impl<T> Queue<T> {
         for unacknowledged in self.unacknowledged.values() {
             for message_id in unacknowledged {
                 if get_duration(&self.queue_data, *message_id) >= max_alive {
-                    println!("Removed (TTL): {}", message_id);
+                    info!("Removed (TTL): {}", message_id);
                     self.queue_data.remove(message_id);
                     to_remove.push(*message_id);
                 }

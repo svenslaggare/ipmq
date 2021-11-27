@@ -12,6 +12,7 @@ int main(int argc, const char* argv[]) {
 	if (argc > 1) {
 		command = argv[1];
 	}
+	ipmq::enableLogging();
 
 	if (command == "consumer") {
 		auto consumer = ipmq_consumer_create("../test.queue", nullptr, 0);

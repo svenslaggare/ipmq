@@ -1,3 +1,4 @@
+pub mod helpers;
 pub mod shared_memory;
 pub mod command;
 pub mod queue;

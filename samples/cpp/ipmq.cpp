@@ -3,6 +3,12 @@
 #include <iostream>
 
 namespace ipmq {
+	void enableLogging() {
+		if (ipmq_enable_logging() != 0) {
+			throw std::runtime_error("Failed to enable logging.");
+		}
+	}
+
 	Commands::Commands(IPMQCommands* commands)
 		: mCommands(commands) {
 

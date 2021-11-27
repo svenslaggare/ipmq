@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use log::error;
+
 use tokio::net::UnixStream;
 
 use crate::shared_memory::{SharedMemory, SharedMemoryError};
@@ -127,7 +129,7 @@ impl Consumer {
                             break;
                         }
                         _ => {
-                            println!("Unhandled command: {:?}", command);
+                            error!("Unhandled command: {:?}", command);
                         }
                     }
                 }

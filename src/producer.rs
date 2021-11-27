@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::ops::DerefMut;
 
+use log::{info, warn, error};
+
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::net::unix::{OwnedWriteHalf, OwnedReadHalf};
 use tokio::sync::{Mutex, mpsc, Notify};
@@ -70,7 +72,7 @@ impl Producer {
                 self.start_handle_client(stream).await;
             }
             Err(e) => {
-                println!("Failed accepting client: {:?}", e);
+                error!("Failed accepting client: {:?}", e);
             }
         }
     }
@@ -120,7 +122,7 @@ impl Producer {
         if let Some(allocation) = allocate() {
             Some(allocation)
         } else {
-            println!("No free blocks, removing oldest...");
+            warn!("No free blocks, removing oldest...");
 
             for queue in self.exchange.lock().await.queues.values() {
                 if queue.remove_oldest().await {
@@ -162,7 +164,7 @@ impl Producer {
         let client_pid = stream.peer_cred().unwrap().pid().unwrap().to_string();
         let (client_id, client_receiver) = self.create_client().await;
 
-        println!("New client: {} (pid: {})", client_id, client_pid);
+        info!("New client: {} (pid: {})", client_id, client_pid);
 
         let (reader, mut writer) = stream.into_split();
         let success = Command::SharedMemoryArea(
@@ -182,7 +184,8 @@ impl Producer {
 
         let self_clone = self.clone();
         tokio::spawn(async move {
-            self_clone.handle_receive_commands(client_id, reader).await
+            self_clone.handle_receive_commands(client_id, reader).await;
+            info!("Client {} (pid: {}) disconnected.", client_id, client_pid);
         });
     }
 

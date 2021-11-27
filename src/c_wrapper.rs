@@ -11,6 +11,16 @@ use crate::shared_memory::{SharedMemory, GenericMemoryAllocation, SmartMemoryAll
 use crate::command::Command;
 use crate::exchange::QueueId;
 use crate::queue::MessageId;
+use crate::helpers;
+
+#[no_mangle]
+pub extern fn ipmq_enable_logging() -> i32 {
+    if helpers::setup_logging().is_ok() {
+        0
+    } else {
+        -1
+    }
+}
 
 pub struct IPMQConsumer {
     tokio_runtime: Runtime,
@@ -76,7 +86,7 @@ pub extern fn ipmq_consumer_bind_queue(consumer: &mut IPMQConsumer,
     let pattern = unsafe { CStr::from_ptr(pattern_ptr).to_str().unwrap() };
 
     match consumer.tokio_runtime.block_on(consumer.consumer.bind_queue(name, pattern)) {
-        Ok(()) => 0,
+        Ok(_) => 0,
         Err(err) => {
             if error_msg_ptr != std::ptr::null_mut() {
                 copy_str(format!("{:?}", err), error_msg_ptr, error_msg_max_length);

@@ -2,6 +2,8 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use log::info;
+
 use regex::Regex;
 
 use tokio::sync::{Mutex, Notify, RwLock};
@@ -30,7 +32,7 @@ impl Exchange {
         match self.get_queue_by_name(name) {
             None => {
                 let queue_id = self.next_queue_id;
-                println!("Created queue '{}' (id: {})", name, queue_id);
+                info!("Created queue '{}' (id: {})", name, queue_id);
                 self.next_queue_id += 1;
 
                 let queue = Arc::new(ExchangeQueue::new(name, queue_id, options));
@@ -74,7 +76,7 @@ impl Exchange {
     pub fn remove_queue(&mut self, id: QueueId) -> bool {
         if let Some(queue) = self.queues.remove(&id) {
             queue.stop();
-            println!("Deleted queue {} (id: {})", queue.name, id);
+            info!("Deleted queue {} (id: {})", queue.name, id);
             true
         } else {
             false

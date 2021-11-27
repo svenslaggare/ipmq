@@ -18,6 +18,10 @@ libc = "0.2"
 tempfile = "3.1.0"
 pyo3 = { version = "0.13.2", features = ["extension-module"], optional = true }
 
+chrono = "0.4"
+log = "0.4"
+fern = "0.6"
+
 [lib]
 name = "ipmq"
 crate-type = ["rlib", "cdylib"]

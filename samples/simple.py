@@ -10,7 +10,7 @@ def producer():
     while True:
         message = "Hello, World #{}!".format(number)
         message_bytes = message.encode("utf-8")
-        print(message)
+        print("Sending: {}".format(message))
 
         # allocation = producer.allocate(len(message_bytes))
         # allocation.copy_from(0, message_bytes)
@@ -35,6 +35,8 @@ def consumer():
     consumer.start_consume_queue("test", callback)
 
 if __name__ == "__main__":
+    libipmq.enable_logging()
+
     command = sys.argv[1]
     if command == "producer":
         producer()
