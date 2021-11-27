@@ -144,6 +144,19 @@ impl Producer {
         }
     }
 
+    /// Publish the given bytes with the given routing key to the exchange. Returns true if success
+    pub async fn publish_bytes(&self, routing_key: &str, bytes: &[u8]) -> bool {
+        let allocation = match self.allocate(bytes.len()).await {
+            Some(allocation) => allocation,
+            None => { return false; }
+        };
+
+        allocation.bytes_mut().copy_from_slice(bytes);
+
+        self.publish(routing_key, allocation).await;
+        true
+    }
+
     /// Starts tasks to handle the given client
     async fn start_handle_client(self: &Arc<Self>, stream: UnixStream) {
         let client_pid = stream.peer_cred().unwrap().pid().unwrap().to_string();
