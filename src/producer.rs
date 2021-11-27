@@ -13,7 +13,7 @@ use tokio::time::Duration;
 
 use crate::queue::{Queue, ClientId};
 use crate::command::{Command, Message};
-use crate::exchange::{Exchange, QueueId, ExchangeQueue, ExchangeQueueOptions, QueueMessage, QueueMessageData};
+use crate::exchange::{Exchange, QueueId, ExchangeQueue, ExchangeQueueOptions, ExchangeMessage, ExchangeMessageData};
 use crate::shared_memory::{SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation, SharedMemory, SharedMemoryAllocator};
 
 pub struct ProducerClient {
@@ -135,9 +135,9 @@ impl Producer {
     }
 
     /// Publish the given message with the given routing key to the exchange
-    pub async fn publish(&self, routing_key: &str, message: QueueMessageData) {
+    pub async fn publish(&self, routing_key: &str, message: ExchangeMessageData) {
         for queue in self.exchange.lock().await.matching_queues(routing_key).await {
-            queue.push(QueueMessage {
+            queue.push(ExchangeMessage {
                 routing_key: routing_key.to_owned(),
                 data: message.clone()
             }).await;
@@ -295,7 +295,7 @@ impl Producer {
     }
 
     /// Tries to consume from the given queue
-    async fn try_consume_queue(&self, queue_id: QueueId, queue: &mut Queue<QueueMessage>) {
+    async fn try_consume_queue(&self, queue_id: QueueId, queue: &mut Queue<ExchangeMessage>) {
         while queue.len() > 0 {
             let clients = self.clients.lock().await;
 

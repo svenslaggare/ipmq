@@ -100,19 +100,19 @@ pub struct ExchangeQueueOptions {
 
 /// Represents a message in the queue
 #[derive(Clone)]
-pub struct QueueMessage {
+pub struct ExchangeMessage {
     pub routing_key: String,
-    pub data: QueueMessageData
+    pub data: ExchangeMessageData
 }
 
-pub type QueueMessageData = Arc<SmartMemoryAllocation>;
+pub type ExchangeMessageData = Arc<SmartMemoryAllocation>;
 
 /// Represents a queue in the exchange
 pub struct ExchangeQueue {
     pub name: String,
     pub id: QueueId,
     bindings: RwLock<Vec<Regex>>,
-    pub queue: Mutex<Queue<QueueMessage>>,
+    pub queue: Mutex<Queue<ExchangeMessage>>,
     notify: Notify,
     running: AtomicBool,
     options: ExchangeQueueOptions
@@ -148,7 +148,7 @@ impl ExchangeQueue {
     }
 
     /// Adds the given message to the end of the queue
-    pub async fn push(&self, message: QueueMessage) {
+    pub async fn push(&self, message: ExchangeMessage) {
         self.queue.lock().await.push(message);
         self.notify.notify_one();
     }
