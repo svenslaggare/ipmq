@@ -19,9 +19,27 @@ use crate::queue::MessageId;
 use crate::command::Command;
 use crate::helpers;
 
+#[pymodule]
+fn libipmq(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_wrapped(wrap_pyfunction!(enable_logging))?;
+    m.add_class::<ProducerWrapper>()?;
+    m.add_class::<MemoryAllocationWrapper>()?;
+    m.add_class::<ConsumerWrapper>()?;
+    m.add_class::<CommandsWrapper>()?;
+    Ok(())
+}
+
+macro_rules! map_py_err {
+    ($var:expr, $message:expr) => {
+        {
+           $var.map_err(|err| PyValueError::new_err(format!($message, err)))
+        }
+    };
+}
+
 #[pyfunction]
 fn enable_logging() -> PyResult<()> {
-    helpers::setup_logging().map_err(|err| PyValueError::new_err(format!("Failed to create shared memory: {:?}.", err)))
+    map_py_err!(helpers::setup_logging(), "Failed to create shared memory: {:?}.")
 }
 
 #[pyclass(name="Producer")]
@@ -36,8 +54,7 @@ impl ProducerWrapper {
     fn new(path: &str, shared_memory_path: &str, shared_memory_size: usize) -> PyResult<Self> {
         let tokio_runtime = Arc::new(Runtime::new().unwrap());
 
-        let shared_memory = SharedMemory::write(Path::new(shared_memory_path), shared_memory_size)
-            .map_err(|err| PyValueError::new_err(format!("Failed to create shared memory: {:?}.", err)))?;
+        let shared_memory = map_py_err!(SharedMemory::write(Path::new(shared_memory_path), shared_memory_size), "Failed to create shared memory: {:?}.")?;
         let producer = Producer::new(Path::new(path), shared_memory);
 
         let tokio_runtime_clone = tokio_runtime.clone();
@@ -144,8 +161,7 @@ impl ConsumerWrapper {
     #[new]
     fn new(path: &str) -> PyResult<Self> {
         let tokio_runtime = Runtime::new().unwrap();
-        let consumer = tokio_runtime.block_on(Consumer::connect(Path::new(path)))
-            .map_err(|err| PyValueError::new_err(format!("{:?}", err)))?;
+        let consumer = map_py_err!(tokio_runtime.block_on(Consumer::connect(Path::new(path))), "Failed to create consumer: {:?}")?;
 
         Ok(
             ConsumerWrapper {
@@ -162,14 +178,12 @@ impl ConsumerWrapper {
     }
 
     fn bind_queue(&mut self, name: &str, pattern: &str) -> PyResult<()>  {
-        self.tokio_runtime.block_on(self.consumer.bind_queue(name, pattern))
-            .map_err(|err| PyValueError::new_err(format!("{:?}", err)))?;
+        map_py_err!(self.tokio_runtime.block_on(self.consumer.bind_queue(name, pattern)), "Failed to bind to queue: {:?}")?;
         Ok(())
     }
 
     fn start_consume_queue(&mut self, py: Python, name: &str, callback: PyObject) -> PyResult<()>  {
-        self.tokio_runtime.block_on(self.consumer.start_consume_queue(name))
-            .map_err(|err| PyValueError::new_err(format!("{:?}", err)))?;
+        map_py_err!(self.tokio_runtime.block_on(self.consumer.start_consume_queue(name)), "Failed to start consume queue: {:?}")?;
 
         let result = self.tokio_runtime.block_on(
             self.consumer.handle_messages::<_, PyErr>(|commands, shared_memory, message| {
@@ -219,14 +233,4 @@ impl CommandsWrapper {
     fn stop_consume(&mut self, queue_id: QueueId) {
         self.commands.push(Command::StopConsume(queue_id));
     }
-}
-
-#[pymodule]
-fn libipmq(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(enable_logging))?;
-    m.add_class::<ProducerWrapper>()?;
-    m.add_class::<MemoryAllocationWrapper>()?;
-    m.add_class::<ConsumerWrapper>()?;
-    m.add_class::<CommandsWrapper>()?;
-    Ok(())
 }
