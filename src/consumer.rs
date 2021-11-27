@@ -3,13 +3,14 @@ use std::path::Path;
 use tokio::net::UnixStream;
 
 use crate::shared_memory::{SharedMemory, SharedMemoryError};
-use crate::command::{Command, Message};
+use crate::command::{Command, Message, StartConsumeError, BindQueueError};
+use crate::exchange::QueueId;
 
 #[derive(Debug)]
 pub enum ConsumerError {
     IO(tokio::io::Error),
     FailedToCreateSharedMemory(SharedMemoryError),
-    InvalidBindPattern(String),
+    FailedToBindToQueue(BindQueueError),
     UnexpectedCommand(Command)
 }
 
@@ -25,7 +26,7 @@ pub type ConsumerResult<T> = Result<T, ConsumerError>;
 pub enum HandleMessageError<T> {
     CallbackError(T),
     IO(tokio::io::Error),
-    FailedToStartConsume(String),
+    FailedToStartConsume(StartConsumeError),
     FailedCreatingSharedMemory(SharedMemoryError),
     ReceivedMessageWithoutSharedMemory
 }
@@ -67,19 +68,15 @@ impl Consumer {
     }
 
     /// Sends a command to bind the given queue to the given pattern
-    pub async fn bind_queue(&mut self, name: &str, pattern: &str) -> ConsumerResult<()> {
+    pub async fn bind_queue(&mut self, name: &str, pattern: &str) -> ConsumerResult<QueueId> {
         Command::BindQueue(name.to_owned(), pattern.to_owned()).send_command(&mut self.stream).await?;
         let response = Command::receive_command(&mut self.stream).await?;
         match response {
             Command::BindQueueResult(result) => {
-                if let Some(err) = result {
-                    return Err(ConsumerError::InvalidBindPattern(err));
-                }
+                result.map_err(|err| ConsumerError::FailedToBindToQueue(err))
             }
             _ => { return Err(ConsumerError::UnexpectedCommand(response)); }
         }
-
-        Ok(())
     }
 
     /// Sends a command to start consuming from the given queue
@@ -96,8 +93,8 @@ impl Consumer {
             match Command::receive_command(&mut self.stream).await {
                 Ok(command) => {
                     match command {
-                        Command::StartConsumeResult(err) => {
-                            if let Some(err) = err {
+                        Command::StartConsumeResult(result) => {
+                            if let Err(err) = result {
                                 return Err(HandleMessageError::FailedToStartConsume(err));
                             }
                         }

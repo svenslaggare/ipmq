@@ -11,9 +11,9 @@ use crate::shared_memory::SharedMemory;
 pub enum Command {
     CreateQueue { name: String, auto_delete: bool, ttl: Option<f64> },
     BindQueue(String, String),
-    BindQueueResult(Option<String>),
+    BindQueueResult(Result<QueueId, BindQueueError>),
     StartConsume(String),
-    StartConsumeResult(Option<String>),
+    StartConsumeResult(Result<QueueId, StartConsumeError>),
     SharedMemoryArea(String, usize),
     Message(Message),
     Acknowledge(QueueId, MessageId),
@@ -36,6 +36,19 @@ impl Command {
         socket.write_all(&command_bytes).await?;
         Ok(())
     }
+}
+
+/// Bind queue errors
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum BindQueueError {
+    InvalidBindPattern(String),
+    QueueNotFound
+}
+
+/// Start consume errors
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum StartConsumeError {
+    QueueNotFound
 }
 
 /// Represents a message received from the producer

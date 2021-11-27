@@ -12,7 +12,7 @@ use tokio::time;
 use tokio::time::Duration;
 
 use crate::queue::{Queue, ClientId};
-use crate::command::{Command, Message};
+use crate::command::{Command, Message, StartConsumeError, BindQueueError};
 use crate::exchange::{Exchange, QueueId, ExchangeQueue, ExchangeQueueOptions, ExchangeMessage, ExchangeMessageData};
 use crate::shared_memory::{SmartSharedMemoryAllocator, SmartMemoryAllocation, GenericMemoryAllocation, SharedMemory, SharedMemoryAllocator};
 
@@ -229,13 +229,12 @@ impl Producer {
                         }
                         Command::BindQueue(queue_name, pattern) => {
                             let result = if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
-                                if let Err(err) = queue.add_binding(&pattern).await {
-                                    Some(format!("Invalid bind pattern: {:?}", err))
-                                } else {
-                                    None
+                                match queue.add_binding(&pattern).await {
+                                    Ok(_) => Ok(queue.id),
+                                    Err(err) => Err(BindQueueError::InvalidBindPattern(format!("{:?}", err)))
                                 }
                             } else {
-                                Some("Queue not found.".to_owned())
+                                Err(BindQueueError::QueueNotFound)
                             };
 
                             if !self.send_command(client_id, Command::BindQueueResult(result)).await {
@@ -244,13 +243,13 @@ impl Producer {
                         }
                         Command::StartConsume(queue_name) => {
                             if let Some(queue) = self.exchange.lock().await.get_queue_by_name(&queue_name) {
-                                if !self.send_command(client_id, Command::StartConsumeResult(None)).await {
+                                if !self.send_command(client_id, Command::StartConsumeResult(Ok(queue.id.clone()))).await {
                                     break;
                                 }
 
                                 queue.add_client(client_id).await;
                             } else {
-                                if !self.send_command(client_id, Command::StartConsumeResult(Some("Queue does not exist.".to_owned()))).await {
+                                if !self.send_command(client_id, Command::StartConsumeResult(Err(StartConsumeError::QueueNotFound))).await {
                                     break;
                                 }
                             }
