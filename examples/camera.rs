@@ -107,7 +107,7 @@ async fn main_consumer(queue: Option<String>) {
 
     consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
         let metadata_size = std::mem::size_of::<CameraMetadata>();
-        let buffer = shared_memory.bytes_from_data(&message.data);
+        let buffer = message.buffer(shared_memory);
         let frame_metadata = unsafe { std::ptr::read(buffer[..metadata_size].as_ptr() as *const CameraMetadata) };
 
         let frame = unsafe {

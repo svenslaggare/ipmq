@@ -166,7 +166,7 @@ impl ConsumerWrapper {
 
         let result = self.tokio_runtime.block_on(
             self.consumer.handle_messages::<_, PyErr>(|commands, shared_memory, message| {
-                let buffer = shared_memory.bytes_from_data(&message.data);
+                let buffer = message.buffer(shared_memory);
 
                 let callback_commands = PyCell::new(py, CommandsWrapper { commands: Vec::new() })?;
 

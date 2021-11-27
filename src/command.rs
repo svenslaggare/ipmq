@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::queue::MessageId;
 use crate::exchange::{QueueId};
+use crate::shared_memory::SharedMemory;
 
 /// Represents a command used for communication between the producer and consumer
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -54,6 +55,10 @@ impl Message {
             id,
             data
         }
+    }
+
+    pub fn buffer<'a>(&self, shared_memory: &'a SharedMemory) -> &'a [u8] {
+        shared_memory.bytes_from_data(&self.data)
     }
 
     pub fn acknowledgement(&self) -> Command {

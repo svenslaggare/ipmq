@@ -84,10 +84,8 @@ async fn main_consumer1(queue: Option<String>) {
     consumer.bind_queue(&queue, ".*").await.unwrap();
     consumer.start_consume_queue(&queue).await.unwrap();
 
-    // let mut number = 0;
     consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
-        let buffer = shared_memory.bytes_from_data(&message.data);
-        let data_str = std::str::from_utf8(buffer).unwrap();
+        let data_str = std::str::from_utf8(message.buffer(shared_memory)).unwrap();
         println!("{}: {}", message.id, data_str);
 
         commands.push(message.acknowledgement());
@@ -106,8 +104,7 @@ async fn main_consumer2(queue: Option<String>) {
     consumer.start_consume_queue(&queue).await.unwrap();
 
     consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
-        let buffer = shared_memory.bytes_from_data(&message.data);
-        let data_str = std::str::from_utf8(buffer).unwrap();
+        let data_str = std::str::from_utf8(message.buffer(shared_memory)).unwrap();
         println!("{}: {}", message.id, data_str);
 
         commands.push(message.acknowledgement());
@@ -131,8 +128,7 @@ async fn main_consumer3(queue: Option<String>) {
 
     let mut number = 0;
     consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
-        let buffer = shared_memory.bytes_from_data(&message.data);
-        let data_str = std::str::from_utf8(buffer).unwrap();
+        let data_str = std::str::from_utf8(message.buffer(shared_memory)).unwrap();
         println!("{}: {}", message.id, data_str);
 
         commands.push(message.acknowledgement());

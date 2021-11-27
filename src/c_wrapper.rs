@@ -107,7 +107,7 @@ pub extern fn ipmq_consumer_start_consume_queue(consumer: &mut IPMQConsumer,
 
     let result = consumer.tokio_runtime.block_on(
         consumer.consumer.handle_messages::<_, ()>(|commands, shared_memory, message| {
-            let buffer = shared_memory.bytes_from_data(&message.data);
+            let buffer = message.buffer(shared_memory);
 
             let mut commands_wrapper = IPMQCommands(commands);
             let routing_key: CString = CString::new(message.routing_key.clone()).unwrap();
