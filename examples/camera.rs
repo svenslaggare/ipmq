@@ -6,7 +6,7 @@ use opencv::prelude::MatTrait;
 use opencv::core::{Mat, Size2i};
 
 use ipmq::producer::{Producer};
-use ipmq::shared_memory::{SharedMemory, SharedMemoryAllocator};
+use ipmq::shared_memory::{SharedMemory};
 use ipmq::shared_memory::GenericMemoryAllocation;
 use ipmq::consumer::Consumer;
 use ipmq::helpers;
